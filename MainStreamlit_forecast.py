@@ -22,10 +22,10 @@ warnings.filterwarnings("ignore")
 # Global Configuration
 API_KEY = 'AIzaSyCTNncuxKui7XIzrZWt1o_EtLIxiew8qtE'
 MAPPING_FILE_PATH = "company_name_to_ticker.xlsx"
-LSTM_CSV_PATH = "/workspaces/FinalProj/LSTM/actual_vs_pred_stocks.csv"
+LSTM_CSV_PATH = "/workspaces/FinalProj/LSTM/actual_vs_pred_lstm.csv"
 XGBOOST_CSV_PATH = "/workspaces/FinalProj/XGBoost/model_XGBoost_metrics_and_predictions.csv"
 LIGHTGBM_CSV_PATH = "/workspaces/FinalProj/LightGBM/LightGBM_metrics_and_predictions.csv"
-BEST_MODEL_CSV = "/workspaces/FinalProj/Metrics/best_model_per_stock.csv"
+BEST_MODEL_CSV = "/workspaces/FinalProj/Metrics/without_ARIMA_model_to_stock.csv"
 SECTORS_DF_PATH = "sectors_df.csv"
 # Initialize API and Streamlit
 
@@ -50,8 +50,8 @@ def initialize_data():
 # Filter Data
 def filter_stock_data(data, ticker, start_date, end_date):
     return data[(data["Ticker"] == ticker) &
-                (pd.to_datetime(data["Date"]) >= start_date) &
-                (pd.to_datetime(data["Date"]) <= end_date)]
+                (pd.to_datetime(data["Date"], dayfirst=True) >= start_date) &
+                (pd.to_datetime(data["Date"], dayfirst=True) <= end_date)]
 
 def resolve_ticker(user_input, ticker_mapping):
     user_input = user_input.strip().upper()
@@ -144,7 +144,7 @@ def detect_intent(user_input):
 def extract_data_by_model(company, stocks_model, start_date, end_date):
     csv_path_map = {
         "LSTM": LSTM_CSV_PATH,
-        "GRU": "/workspaces/FinalProj/GRU/actual_vs_pred_stocks.csv",
+        "GRU": "/workspaces/FinalProj/GRU/actual_vs_pred_gru.csv",
         "XGBoost": XGBOOST_CSV_PATH,
         "LightGBM": LIGHTGBM_CSV_PATH,
     }
@@ -196,8 +196,8 @@ def extract_data_by_model(company, stocks_model, start_date, end_date):
 
         merged_data = pd.merge(actual_df, predicted_df, on="Date")
         return merged_data[
-            (pd.to_datetime(merged_data["Date"]) >= start_date) &
-            (pd.to_datetime(merged_data["Date"]) <= end_date)
+            (pd.to_datetime(merged_data["Date"], dayfirst=True) >= start_date) &
+            (pd.to_datetime(merged_data["Date"], dayfirst=True) <= end_date)
         ]
 
     raise ValueError(f"Unsupported model type: {stocks_model}")
@@ -232,8 +232,8 @@ def extract_forecasted_values(stock, last_predicted_date, actual_predicted):
     """
     # Define file paths for each model
     forecast_files = {
-        "LSTM": "/workspaces/FinalProj/LSTM/forecast_stocks.csv",
-        "GRU": "/workspaces/FinalProj/GRU/forecast_stocks.csv",
+        "LSTM": "/workspaces/FinalProj/LSTM/forecast_lstm.csv",
+        "GRU": "/workspaces/FinalProj/GRU/forecast_gru.csv",
         "LightGBM": "/workspaces/FinalProj/LightGBM/LightGBM_forecast_stocks.csv",
         "XGBoost": "/workspaces/FinalProj/XGBoost/XGBoost_forecast_stocks.csv"
     }
@@ -254,7 +254,7 @@ def extract_forecasted_values(stock, last_predicted_date, actual_predicted):
     if best_model in ["LSTM", "GRU"]:
         # Filter for the specific stock and select the necessary columns
         filtered_forecast = forecast_data[forecast_data["Ticker"] == stock][["Date", "Forecast"]]
-        filtered_forecast["Date"] = pd.to_datetime(filtered_forecast["Date"])
+        filtered_forecast["Date"] = pd.to_datetime(filtered_forecast["Date"], dayfirst=True)
     elif best_model in ["LightGBM", "XGBoost"]:
         # Filter for the specific stock
         filtered_forecast = forecast_data[forecast_data["Ticker"] == stock]
@@ -294,10 +294,10 @@ def generate_graph_with_forecast(stock, company_name, model):
         BytesIO: Buffer containing the graph image.
     """
     # Step 1: Extract actual and predicted data
-    actual_predicted = extract_data_by_model(stock, model, datetime(2024, 1, 1), datetime.today())
+    actual_predicted = extract_data_by_model(stock, model, datetime(2024, 1, 1), datetime(2025, 3, 13))
 
     # Ensure Date column in actual_predicted is properly converted
-    actual_predicted["Date"] = pd.to_datetime(actual_predicted["Date"], errors="coerce")
+    actual_predicted["Date"] = pd.to_datetime(actual_predicted["Date"], dayfirst=True, errors="coerce")
     if actual_predicted["Date"].isna().any():
         raise ValueError("Invalid dates found in actual or predicted data.")
 
@@ -580,7 +580,7 @@ def generate_predicted_values_graph(data, sector_name):
     for company, company_data in data.groupby("Company"):
         fig.add_trace(
             go.Scatter(
-                x=pd.to_datetime(company_data["Date"]),
+                x=pd.to_datetime(company_data["Date"], dayfirst=True),
                 y=company_data["Predicted"],
                 mode='lines',
                 name=company
@@ -703,7 +703,7 @@ def chatbot_response(user_input, model, ticker_mapping):
         intent_data = detect_intent(user_input)
         if intent_data["intent"] == "sector_values":
             sector_name = intent_data["sector"]
-            start_date, end_date = datetime(2024, 1, 1), datetime(2024, 10, 1)
+            start_date, end_date = datetime(2024, 1, 1), datetime(2025, 3, 13)
             
             # Load sector and best model data
             sector_data_actual = get_actual_values_by_sector(sector_name, start_date=start_date, end_date=end_date)
@@ -722,7 +722,7 @@ def chatbot_response(user_input, model, ticker_mapping):
                     company_name = ticker_to_company_name.get(ticker.replace(".TA", ""), ticker)
                     fig_actual.add_trace(
                         go.Scatter(
-                            x=pd.to_datetime(data["Date"]),
+                            x=pd.to_datetime(data["Date"], dayfirst=True),
                             y=data["Actual"],
                             mode='lines',
                             name=company_name
@@ -760,7 +760,7 @@ def chatbot_response(user_input, model, ticker_mapping):
                     company_name = ticker_to_company_name.get(ticker.replace(".TA", ""), ticker)
                     fig_predicted.add_trace(
                         go.Scatter(
-                            x=pd.to_datetime(data["Date"]),
+                            x=pd.to_datetime(data["Date"], dayfirst=True),
                             y=data["Predicted"],
                             mode='lines',
                             name=company_name
@@ -811,7 +811,7 @@ def chatbot_response(user_input, model, ticker_mapping):
                     company_name = ticker_to_company_name.get(ticker.replace(".TA", ""), ticker)
                     fig_forecasted.add_trace(
                         go.Scatter(
-                            x=pd.to_datetime(forecasted["Date"]),
+                            x=pd.to_datetime(forecasted["Date"], dayfirst=True),
                             y=forecasted["Forecasted"],
                             mode='lines',
                             name=company_name
@@ -899,7 +899,7 @@ def chatbot_response(user_input, model, ticker_mapping):
             best_model_df = pd.read_csv(BEST_MODEL_CSV)
             stocks_model = best_model_df.loc[best_model_df["Company"] == ticker, "Model"].values[0]
 
-            start_date, end_date = datetime(2024, 1, 1), datetime(2024, 10, 1)
+            start_date, end_date = datetime(2024, 1, 1), datetime(2025, 3, 13)
             data = extract_data_by_model(ticker, stocks_model, start_date, end_date)
 
             fig, forecasted = generate_graph_with_forecast(ticker, company_name, stocks_model)
@@ -1000,7 +1000,7 @@ def chatbot_response(user_input, model, ticker_mapping):
             ticker_to_company_name = {v: k for k, v in ticker_mapping.items()}
 
             # Define date range
-            start_date, end_date = datetime(2024, 1, 1), datetime(2024, 10, 1)
+            start_date, end_date = datetime(2024, 1, 1), datetime.today()
 
             # Load the best model mapping
             best_model_df = pd.read_csv(BEST_MODEL_CSV)
@@ -1019,9 +1019,11 @@ def chatbot_response(user_input, model, ticker_mapping):
                     actual_predicted = extract_data_by_model(ticker, stocks_model, start_date, end_date)
                     if not actual_predicted.empty:
                         # Extract forecasted data
-                        last_predicted_date = actual_predicted["Date"].max()
+                        last_predicted_date = datetime(2025, 3, 13)
                         if isinstance(last_predicted_date, str):
                             last_predicted_date = pd.to_datetime(last_predicted_date)
+                        last_predicted_date = pd.to_datetime(last_predicted_date).normalize()
+                        actual_predicted["Date"] = pd.to_datetime(actual_predicted["Date"], dayfirst=True).dt.normalize()
                         if last_predicted_date not in actual_predicted["Date"].values:
                             st.warning(f"No data available for last predicted date ({last_predicted_date}) for ticker {ticker}. Skipping.")
                             continue
@@ -1029,8 +1031,6 @@ def chatbot_response(user_input, model, ticker_mapping):
                         # Retrieve the last predicted value
                         last_predicted_value = actual_predicted.loc[actual_predicted["Date"] == last_predicted_date, "Predicted"].values[0]
                         forecasted = extract_forecasted_values(ticker, last_predicted_date, actual_predicted)
-                        
-
                         # Align forecasted dates
                         forecasted["Date"] = pd.date_range(
                             start=last_predicted_date + timedelta(days=1),
@@ -1158,6 +1158,7 @@ def chatbot_response(user_input, model, ticker_mapping):
         else:
             return {"text": model.generate_content(user_input + 'add a sad emoji wherever you find fitting. include it without saying you did, just respobd normaly and add it as well.').text}
     except Exception as e:
+            print(e)
             resp = emoji.emojize("Oh no! An exception! :face_screaming_in_fear: Please try again!")
             response = {"text" : resp}
             return response
