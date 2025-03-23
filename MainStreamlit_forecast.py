@@ -1,5 +1,4 @@
 import streamlit as st
-from datetime import datetime
 from GraphDrawer import GraphDrawer
 import google.generativeai as genai
 import matplotlib.pyplot as plt
@@ -9,7 +8,6 @@ import pandas as pd
 import base64
 import pickle
 import numpy as np
-import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
