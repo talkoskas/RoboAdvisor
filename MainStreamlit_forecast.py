@@ -14,17 +14,18 @@ import plotly.graph_objects as go
 import warnings
 import time
 import emoji
-import google.generativeai as genai
-import time
 from copy import deepcopy
-warnings.filterwarnings("ignore")
 
-#import modules:
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import AIMessage, HumanMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
 from intent_detector import IntentDetector
 from stock_data_handler import StockDataHandler
 from graph_generator import GraphGenerator
 from chatbot_engine import ChatbotEngine
 
+warnings.filterwarnings("ignore")
 
 # Global Configuration
 API_KEY = 'AIzaSyCTNncuxKui7XIzrZWt1o_EtLIxiew8qtE'
@@ -34,19 +35,12 @@ XGBOOST_CSV_PATH = "/workspaces/FinalProj/XGBoost/model_XGBoost_metrics_and_pred
 LIGHTGBM_CSV_PATH = "/workspaces/FinalProj/LightGBM/LightGBM_metrics_and_predictions.csv"
 BEST_MODEL_CSV = "/workspaces/FinalProj/Metrics/without_ARIMA_model_to_stock.csv"
 SECTORS_DF_PATH = "sectors_df.csv"
-# Initialize API and Streamlit
 
 if "mentioned_tickers" not in st.session_state:
     st.session_state.mentioned_tickers = set()
 
-def initialize_data():
-    return pd.read_csv(LSTM_CSV_PATH)
-
-def text_streamer(text, delay=0.03):
-    for word in text.split(" "):
-        yield word + " "
-        time.sleep(delay)
-
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
 class AppManager:
     def __init__(self):
@@ -54,35 +48,35 @@ class AppManager:
         self.model = self.initialize_model()
         self.ticker_mapping = self.load_ticker_mapping()
 
-        # Init subcomponents
         self.intent_detector = IntentDetector(self.ticker_mapping)
 
         self.model_paths = {
-            "LSTM": "/workspaces/FinalProj/LSTM/actual_vs_pred_lstm.csv",
+            "LSTM": LSTM_CSV_PATH,
             "GRU": "/workspaces/FinalProj/GRU/actual_vs_pred_gru.csv",
-            "XGBoost": "/workspaces/FinalProj/XGBoost/model_XGBoost_metrics_and_predictions.csv",
-            "LightGBM": "/workspaces/FinalProj/LightGBM/LightGBM_metrics_and_predictions.csv",
+            "XGBoost": XGBOOST_CSV_PATH,
+            "LightGBM": LIGHTGBM_CSV_PATH,
         }
 
         self.data_handler = StockDataHandler(
             self.ticker_mapping,
             model_paths=self.model_paths,
-            sector_path="sectors_df.csv",
-            best_model_path="/workspaces/FinalProj/Metrics/without_ARIMA_model_to_stock.csv"
+            sector_path=SECTORS_DF_PATH,
+            best_model_path=BEST_MODEL_CSV
         )
 
         self.graph_generator = GraphGenerator()
-        self.engine = ChatbotEngine(self.model, self.data_handler, self.graph_generator, self.intent_detector)
+        self.engine = ChatbotEngine(self.data_handler, self.graph_generator, self.intent_detector)
 
     def initialize_model(self):
         genai.configure(api_key=self.api_key)
-        return genai.GenerativeModel(
-            model_name="gemini-1.5-flash-8b",
-            system_instruction="You are a chatbot for analyzing Israeli stock market data. Be helpful, smart, and polite."
-        )
+        return ChatGoogleGenerativeAI(
+                    model="gemini-1.5-flash-8b",
+                    temperature=0.3,
+                    google_api_key=self.api_key
+                )
 
     def load_ticker_mapping(self) -> dict:
-        df = pd.read_excel("company_name_to_ticker.xlsx")
+        df = pd.read_excel(MAPPING_FILE_PATH)
         return {row["CompanyName"].upper(): row["Ticker"].upper() for _, row in df.iterrows()}
 
     def run(self):
@@ -92,54 +86,76 @@ class AppManager:
         st.sidebar.title("About")
         st.sidebar.info("This chatbot provides stock analysis using historical and forecasted data.")
 
-        if "chat_history" not in st.session_state:
-            st.session_state.chat_history = []
+        # Display previous messages
+        for message in st.session_state.chat_history:
+            if isinstance(message, HumanMessage):
+                with st.chat_message("user"):
+                    st.write(message.content)
+            elif isinstance(message, AIMessage):
+                with st.chat_message("assistant"):
+                    st.write(message.content)
 
-        if "mentioned_tickers" not in st.session_state:
-            st.session_state.mentioned_tickers = set()
-
-        # Display chat history
-        for i, msg in enumerate(st.session_state.chat_history):
-            with st.chat_message(msg["role"]):
-                if "graphs" in msg:
-                    for j, graph in enumerate(msg["graphs"]):
-                        st.plotly_chart(graph, use_container_width=True, key=f"history_{i}_{j}")
-                if "content" in msg:
-                    st.markdown(msg["content"])
-
-        # Handle input
+        # Handle new user input
         if prompt := st.chat_input("What would you like to know?"):
+            user_msg = HumanMessage(content=prompt)
+            st.session_state.chat_history.append(user_msg)
             with st.chat_message("user"):
-                st.markdown(prompt)
-            st.session_state.chat_history.append({"role": "user", "content": prompt})
+                st.write(prompt)
 
-            response = self.engine.handle_input(prompt)
+            # FIRST: Try intent-based response
+            structured_response = self.engine.handle_input(prompt)
+            if "text" in structured_response or "graphs" in structured_response:
+                with st.chat_message("assistant"):
+                    if "graphs" in structured_response:
+                        for graph in structured_response["graphs"]:
+                            st.plotly_chart(graph, use_container_width=True)
+                    if "text" in structured_response:
+                        st.markdown(structured_response["text"])
 
+                st.session_state.chat_history.append(
+                    AIMessage(content=structured_response.get("text", ""))
+                )
+                return  # ✅ End here if intent handled
+
+            # SECOND: fallback to Gemini via LangChain
+            conversation_history = "\n".join([
+                f"User: {m.content}" if isinstance(m, HumanMessage)
+                else f"Assistant: {m.content}" for m in st.session_state.chat_history
+            ])
+
+            def get_response(user_query, conversation_history):
+                prompt_template = """
+                You are a helpful assistant specialized in Israeli stock market data. If no intent is detected, answer naturally.
+
+                Chat history:
+                {conversation_history}
+
+                User question:
+                {user_query}
+                """
+                prompt = ChatPromptTemplate.from_template(prompt_template)
+                llm = ChatGoogleGenerativeAI(
+                    model="gemini-1.5-flash",
+                    temperature=0.3,
+                    google_api_key=self.api_key,
+                    stream=True
+                )
+                chain = prompt | llm | StrOutputParser()
+                return chain.stream({
+                    "conversation_history": conversation_history,
+                    "user_query": user_query
+                })
+
+            # Stream Gemini response
+            stream = get_response(prompt, conversation_history)
             with st.chat_message("assistant"):
-                if "graphs" in response:
-                    for j, graph in enumerate(response["graphs"]):
-                        st.plotly_chart(graph, use_container_width=True, key=f"response_{len(st.session_state.chat_history)}_{j}")
-                        time.sleep(1)
-
-                if "text" in response:
-                    st.write_stream(self.stream_response_text(response["text"]))
-
-            # Save response in history
-            st.session_state.chat_history.append({
-                "role": "assistant",
-                "content": response.get("text", ""),
-                "graphs": [deepcopy(graph) for graph in response.get("graphs", [])]
-            })
-
-    def stream_response_text(self, text, delay=0.03):
-        for word in text.split(" "):
-            yield word + " "
-            time.sleep(delay)
-             
-
+                full_response = ""
+                for chunk in stream:
+                    st.write(chunk)
+                    full_response += chunk
+            st.session_state.chat_history.append(AIMessage(content=full_response))
 
 
 if __name__ == "__main__":
     app = AppManager()
     app.run()
-
