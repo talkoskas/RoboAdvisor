@@ -151,8 +151,8 @@ class AppManager:
             with st.chat_message("assistant"):
                 full_response = ""
                 for chunk in stream:
-                    st.write(chunk)
                     full_response += chunk
+                st.write(full_response)
             st.session_state.chat_history.append(AIMessage(content=full_response))
 
 
