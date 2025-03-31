@@ -149,13 +149,18 @@ class AppManager:
             # Stream Gemini response
             stream = get_response(prompt, conversation_history)
             with st.chat_message("assistant"):
+                message_placeholder = st.empty()  # Reserve a spot for streamed text
                 full_response = ""
+
                 for chunk in stream:
                     full_response += chunk
-                st.write(full_response)
-            st.session_state.chat_history.append(AIMessage(content=full_response))
+                    message_placeholder.markdown(full_response + "▌")  # Typing cursor effect
+
+                message_placeholder.markdown(full_response)  # Final clean output
+
 
 
 if __name__ == "__main__":
     app = AppManager()
     app.run()
+
