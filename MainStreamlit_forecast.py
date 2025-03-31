@@ -91,9 +91,17 @@ class AppManager:
             if isinstance(message, HumanMessage):
                 with st.chat_message("user"):
                     st.write(message.content)
-            elif isinstance(message, AIMessage):
+            elif isinstance(message, dict) and message.get("role") == "assistant":
+                with st.chat_message("assistant"):
+                    for graph in message.get("graphs", []):
+                        st.plotly_chart(graph, use_container_width=True)
+                    if message.get("text"):
+                        st.markdown(message["text"])
+            elif isinstance(message, AIMessage):  # fallback for old messages
                 with st.chat_message("assistant"):
                     st.write(message.content)
+
+
 
         # Handle new user input
         if prompt := st.chat_input("What would you like to know?"):
@@ -112,15 +120,20 @@ class AppManager:
                     if "text" in structured_response:
                         st.markdown(structured_response["text"])
 
-                st.session_state.chat_history.append(
-                    AIMessage(content=structured_response.get("text", ""))
-                )
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "text": structured_response.get("text", ""),
+                    "graphs": structured_response.get("graphs", [])
+                })
                 return  # ✅ End here if intent handled
 
             # SECOND: fallback to Gemini via LangChain
             conversation_history = "\n".join([
                 f"User: {m.content}" if isinstance(m, HumanMessage)
-                else f"Assistant: {m.content}" for m in st.session_state.chat_history
+                else f"Assistant: {m.content}" if isinstance(m, AIMessage)
+                else f"Assistant: {m.get('text', '')}" if isinstance(m, dict) and m.get("role") == "assistant"
+                else ""
+                for m in st.session_state.chat_history
             ])
 
             def get_response(user_query, conversation_history):
@@ -157,6 +170,9 @@ class AppManager:
                     message_placeholder.markdown(full_response + "▌")  # Typing cursor effect
 
                 message_placeholder.markdown(full_response)  # Final clean output
+
+            # ✅ Save Gemini response correctly to history
+            st.session_state.chat_history.append(AIMessage(content=full_response))
 
 
 
