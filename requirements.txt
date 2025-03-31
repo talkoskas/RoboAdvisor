@@ -7,3 +7,7 @@ matplotlib
 plotly
 emoji
 tabulate
+langchain
+langchain-core
+langchain-google-genai
+google-generativeai
