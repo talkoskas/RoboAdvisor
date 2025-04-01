@@ -1,85 +1,115 @@
+import re
 from typing import List, Dict
+from spellchecker import SpellChecker
+
+
 class IntentDetector:
-    def __init__(self, ticker_mapping):
+    def __init__(self, ticker_mapping: Dict[str, str], industry_mapping: Dict[str, str]):
         self.ticker_mapping = ticker_mapping
+        self.industry_mapping = industry_mapping
+
+        self.intent_keywords = {
+            "industry_values": ["actual values", "industry", "companies in industry", "all"],
+            "compare": ["compare", "comparison", "difference between", "versus", "vs", "with", "and", "&", ","],
+            "graph": ["chart of", "plot of", "graph of", "graph", "plot", "visualize", "chart"]
+        }
+
+        self.keyword_vocab = sum(self.intent_keywords.values(), [])
+        self.spell = SpellChecker()
+
+        # Build spelling vocab from everything we know
+        all_vocab = list(ticker_mapping.keys()) + list(ticker_mapping.values())
+        all_vocab += list(industry_mapping.keys()) + self.keyword_vocab
+        self.spell.word_frequency.load_words([w.lower() for w in all_vocab])
+
+    def normalize_text(self, text: str) -> str:
+        text = text.lower()
+        text = re.sub(r"[-:]", " ", text)
+        text = re.sub(r"\s+", " ", text)
+        return text.strip()
+
+    def spell_correct(self, word: str) -> str:
+        return self.spell.correction(word.lower())
+
+    def fuzzy_contains_keyword(self, user_input: str, keyword_list: List[str]) -> str:
+        words = user_input.lower().split()
+        for word in words:
+            corrected = self.spell_correct(word)
+            if corrected in keyword_list:
+                return corrected
+        return None
+
+    def fuzzy_match_company(self, name: str) -> str:
+        name = self.spell_correct(name)
+        candidates = list(self.ticker_mapping.keys()) + list(self.ticker_mapping.values())
+        for c in candidates:
+            if name.lower() in c.lower():
+                return c
+        raise ValueError(f"Company '{name}' not found in mapping.")
+
+    def fuzzy_match_industry(self, name: str) -> str:
+        name = self.spell_correct(name)
+        for industry in self.industry_mapping:
+            if name in industry.lower():
+                return self.industry_mapping[industry]
+        raise ValueError(f"Industry '{name}' not recognized.")
 
     def detect(self, user_input: str) -> dict:
-        """
-        Detects the user's intent from text.
-        """
-        user_input = user_input.lower()
+        user_input = self.normalize_text(user_input)
 
-        # industry intent
-        industry_keywords = ["actual values", "industry", "companies in industry", "all"]
-        if any(keyword in user_input for keyword in industry_keywords):
-            industry_name = user_input.split("industry")[1].strip() if "industry" in user_input else None
-            if industry_name:
-                return {"intent": "industry_values", "industry": industry_name}
-            raise ValueError("Please specify the industry name for the query.")
+        if self.fuzzy_contains_keyword(user_input, self.intent_keywords["industry_values"]):
+            industry_name = self.extract_industry_name(user_input)
+            return {"intent": "industry_values", "industry": industry_name}
 
-        # Comparison intent
-        compare_keywords = ["compare", "comparison", "difference between", "versus",
-                            "vs", ",", "&", "and", "compare me the stocks of", "with"]
-        if any(keyword in user_input for keyword in compare_keywords):
+        if self.fuzzy_contains_keyword(user_input, self.intent_keywords["compare"]):
             return {"intent": "compare", "companies": self.extract_company_names(user_input)}
 
-        # Single stock graph
-        graph_keywords = ["graph", "plot", "visualize", "show", "chart of", "chart", "plot of", "graph of"]
-        if any(keyword in user_input for keyword in graph_keywords):
-            if "compare" in user_input or ("and" in user_input or "," in user_input):
+        if self.fuzzy_contains_keyword(user_input, self.intent_keywords["graph"]):
+            if self.fuzzy_contains_keyword(user_input, self.intent_keywords["compare"]):
                 return {"intent": "compare", "companies": self.extract_company_names(user_input)}
-            else:
-                return {"intent": "graph", "company": self.extract_company_name(user_input)}
+            return {"intent": "graph", "company": self.extract_company_name(user_input)}
 
         return {"intent": "text"}
 
-    def extract_company_name(self, user_input: str) -> str:
-        """
-        Extracts a single company name for graphing.
-        """
-        user_input = user_input.lower()
-        graph_keywords = ["graph of", "graph", "plot of", "plot", "visualize", "show", "chart of", "chart"]
-
-        for keyword in graph_keywords:
+    def extract_industry_name(self, user_input: str) -> str:
+        for keyword in self.intent_keywords["industry_values"]:
             if keyword in user_input:
-                return user_input.split(keyword)[-1].strip()
+                after = user_input.split(keyword)[-1].strip()
+                return self.fuzzy_match_industry(after)
+        raise ValueError("Could not recognize the industry name.")
 
-        raise ValueError("No recognizable company name in input.")
+    def extract_company_name(self, user_input: str) -> str:
+        for keyword in self.intent_keywords["graph"]:
+            if keyword in user_input:
+                after = user_input.split(keyword)[-1].strip()
+                return self.fuzzy_match_company(after)
+        return self.fuzzy_match_company(user_input.split()[-1])
 
     def extract_company_names(self, user_input: str) -> list:
-        """
-        Extracts multiple company names for comparison.
-        """
-        user_input = user_input.lower()
-        delimiters = ["compare", "comparison", "difference between", "versus", "vs",
-                      ",", "&", "and", "compare me the stocks of", "with"]
+        for keyword in self.intent_keywords["compare"]:
+            if keyword in user_input:
+                user_input = user_input.split(keyword, 1)[-1]
+                break
 
-        for delimiter in delimiters:
-            user_input = user_input.replace(delimiter, ",")
+        for delim in self.intent_keywords["compare"]:
+            user_input = user_input.replace(delim, ",")
 
         companies = [c.strip() for c in user_input.split(",") if c.strip()]
-        words_list = []
-        for company in companies:
-            words_list += company.split()
+        matched = []
+        for c in companies:
+            try:
+                matched_name = self.fuzzy_match_company(c)
+                matched.append(matched_name)
+            except ValueError:
+                continue
 
-        valid_companies = []
-        for company in words_list:
-            for valid_name in self.ticker_mapping.keys():
-                if valid_name in company.upper():
-                    valid_companies.append(valid_name)
-                    break
-
-        if len(valid_companies) < 2:
-            raise ValueError("At least two valid companies are required for comparison.")
-
-        return list(set(valid_companies))
+        if len(matched) < 2:
+            raise ValueError("At least two valid companies required.")
+        return list(set(matched))
 
     def resolve_ticker(self, user_input: str) -> str:
-        """
-        Maps a company name or ticker to the actual ticker symbol.
-        """
         user_input = user_input.strip().upper()
         for company_name, ticker in self.ticker_mapping.items():
             if user_input in company_name or user_input == ticker:
                 return ticker
-        raise ValueError(f"Ticker or company name '{user_input}' not found in mapping.")
+        raise ValueError(f"Ticker or company name '{user_input}' not found.")
