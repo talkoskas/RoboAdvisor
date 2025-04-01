@@ -198,3 +198,4 @@ class StockDataHandler:
             synchronized.append(df)
 
         return synchronized
+
