@@ -46,9 +46,9 @@ class GraphGenerator:
         fig.update_yaxes(showgrid=True)
         return self.customize(fig)
 
-    def generate_sector_graph(self, df: pd.DataFrame, value_column: str, sector_name: str):
+    def generate_industry_graph(self, df: pd.DataFrame, value_column: str, industry_name: str):
         """
-        Plots all companies in a sector using the specified column (Actual or Predicted).
+        Plots all companies in a industry using the specified column (Actual or Predicted).
         """
         fig = go.Figure()
         for company, group in df.groupby("Company" if "Company" in df else "Ticker"):
@@ -60,7 +60,7 @@ class GraphGenerator:
             ))
 
         fig.update_layout(
-            title=f"{value_column} Values for {sector_name} Sector",
+            title=f"{value_column} Values for {industry_name} Industry",
             xaxis_title="Date",
             yaxis_title=value_column,
             height=600,
