@@ -46,8 +46,8 @@ class ChatbotEngine:
             intent_data = self.intent_detector.detect(user_input)
             intent = intent_data.get("intent")
 
-            if intent == "sector_values" and "sector" in intent_data:
-                return self._handle_sector_intent(intent_data)
+            if intent == "industry_values" and "industry" in intent_data:
+                return self._handle_industry_intent(intent_data)
             elif intent == "graph" and "company" in intent_data:
                 return self._handle_graph_intent(intent_data)
             elif intent == "compare" and "companies" in intent_data and len(intent_data["companies"]) >= 2:
@@ -70,13 +70,13 @@ class ChatbotEngine:
 
     # ====== Intent Handlers (static text, no stream) ======
 
-    def _handle_sector_intent(self, intent_data):
-        sector = intent_data["sector"]
+    def _handle_industry_intent(self, intent_data):
+        industry = intent_data["industry"]
         start_date = datetime(2024, 1, 1)
         end_date = datetime(2025, 3, 13)
 
-        actual_df = self.data_handler.get_sector_actuals(sector, start_date, end_date)
-        predicted_df = self.data_handler.get_sector_predictions(sector, start_date, end_date)
+        actual_df = self.data_handler.get_industry_actuals(industry, start_date, end_date)
+        predicted_df = self.data_handler.get_industry_predictions(industry, start_date, end_date)
         best_model_df = pd.read_csv(self.data_handler.best_model_path)
 
         forecast_dfs = []
@@ -96,11 +96,11 @@ class ChatbotEngine:
 
         full_forecast_df = pd.concat(forecast_dfs) if forecast_dfs else pd.DataFrame()
 
-        fig_actual = self.graph_generator.generate_sector_graph(actual_df, "Actual", sector)
-        fig_pred = self.graph_generator.generate_sector_graph(predicted_df, "Predicted", sector)
-        fig_forecast = self.graph_generator.generate_sector_graph(full_forecast_df, "Forecasted", sector)
+        fig_actual = self.graph_generator.generate_industry_graph(actual_df, "Actual", industry)
+        fig_pred = self.graph_generator.generate_industry_graph(predicted_df, "Predicted", industry)
+        fig_forecast = self.graph_generator.generate_industry_graph(full_forecast_df, "Forecasted", industry)
 
-        summary = self._generate_sector_summary(actual_df, predicted_df, full_forecast_df, ticker_to_company, sector)
+        summary = self._generate_industry_summary(actual_df, predicted_df, full_forecast_df, ticker_to_company, industry)
         return {"text": summary, "graphs": [fig_actual, fig_pred, fig_forecast]}
 
     def _handle_graph_intent(self, intent_data):
@@ -164,7 +164,7 @@ class ChatbotEngine:
         summary = self._generate_comparison_summary(summaries)
         return {"text": summary, "graphs": [fig]}
 
-    def _generate_sector_summary(self, actual_df, predicted_df, forecast_df, name_map, sector):
+    def _generate_industry_summary(self, actual_df, predicted_df, forecast_df, name_map, industry):
         def summarize(df, col):
             summary = []
             for ticker in df["Ticker"].unique():
@@ -176,7 +176,7 @@ class ChatbotEngine:
             return "\n".join(summary)
 
         return (
-            f"📊 Sector-wide summary for {sector} sector:\n\n"
+            f"📊 industry-wide summary for {industry} industry:\n\n"
             f"**Actuals:**\n{summarize(actual_df, 'Actual')}\n\n"
             f"**Predictions:**\n{summarize(predicted_df, 'Predicted')}\n\n"
             f"**Forecasts:**\n{summarize(forecast_df, 'Forecasted')}"
