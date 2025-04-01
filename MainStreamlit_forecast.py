@@ -47,9 +47,8 @@ class AppManager:
         self.api_key = os.getenv("GEMINI_API_KEY", API_KEY)
         self.model = self.initialize_model()
         self.ticker_mapping = self.load_ticker_mapping()
-
-        self.intent_detector = IntentDetector(self.ticker_mapping)
-
+        self.industry_mapping = self.load_industry_mapping()
+        self.intent_detector = IntentDetector(self.ticker_mapping, self.industry_mapping)
         self.model_paths = {
             "LSTM": LSTM_CSV_PATH,
             "GRU": "/workspaces/FinalProj/GRU/actual_vs_pred_gru.csv",
@@ -78,6 +77,30 @@ class AppManager:
     def load_ticker_mapping(self) -> dict:
         df = pd.read_excel(MAPPING_FILE_PATH)
         return {row["CompanyName"].upper(): row["Ticker"].upper() for _, row in df.iterrows()}
+    def load_industry_mapping(self) -> dict:
+        """
+        Loads industry names from the sectors CSV and creates a mapping from
+        cleaned variations to canonical industry names.
+        """
+        df = pd.read_csv(SECTORS_DF_PATH)
+        df = df.dropna(subset=["Industry"])
+        canonical_industries = df["Industry"].unique()
+
+        industry_mapping = {}
+
+        for industry in canonical_industries:
+            cleaned = (
+                str(industry).lower()
+                .replace("-", " ")
+                .replace(":", " ")
+                .replace("_", " ")
+                .replace(",", " ")
+            )
+            cleaned = " ".join(cleaned.split())  # normalize spaces
+            industry_mapping[cleaned] = industry.strip()
+
+        return industry_mapping
+
 
     def run(self):
         st.set_page_config(page_title="Robo Advisor", layout="wide")
@@ -139,6 +162,8 @@ class AppManager:
             def get_response(user_query, conversation_history):
                 prompt_template = """
                 You are a helpful assistant specialized in Israeli stock market data. If no intent is detected, answer naturally.
+                note that there will be typos, so correct them.
+                Your users are new to the stock market, soo not only present data and graph, but explain deeply
 
                 Chat history:
                 {conversation_history}
