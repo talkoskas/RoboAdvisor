@@ -86,15 +86,15 @@ class StockDataHandler:
         merged["Date"] = pd.to_datetime(merged["Date"], dayfirst=True)
         return merged[(merged["Date"] >= start_date) & (merged["Date"] <= end_date)]
 
-    def get_sector_actuals(self, sector, start_date, end_date):
+    def get_industry_actuals(self, industry, start_date, end_date):
         df = pd.read_csv(self.sector_path)
 
         # Normalize column names just in case
         df.rename(columns={"Symbol": "Ticker"}, inplace=True)
 
-        # Filter companies in sector
-        sector_companies = df[df["Market Sector"].str.lower() == sector.lower()]
-        tickers = sector_companies["Ticker"].tolist()
+        # Filter companies in industry
+        industry_companies = df[df["Industry"].str.lower() == industry.lower()]
+        tickers = industry_companies["Ticker"].tolist()
 
         result = []
 
@@ -113,7 +113,7 @@ class StockDataHandler:
 
         return pd.concat(result, ignore_index=True) if result else pd.DataFrame()
 
-    def get_sector_predictions(self, sector, start_date, end_date):
+    def get_industry_predictions(self, industry, start_date, end_date):
         df = pd.read_csv(self.sector_path)
         best_models = pd.read_csv(self.best_model_path)
 
@@ -121,9 +121,9 @@ class StockDataHandler:
         df.rename(columns={"Symbol": "Ticker"}, inplace=True)
         reverse_map = {v: k for k, v in self.ticker_mapping.items()}
 
-        # Filter companies in sector
-        sector_companies = df[df["Market Sector"].str.lower() == sector.lower()]
-        tickers = sector_companies["Ticker"].tolist()
+        # Filter companies in industry
+        industry_companies = df[df["Industry"].str.lower() == industry.lower()]
+        tickers = industry_companies["Ticker"].tolist()
 
         result = []
 
