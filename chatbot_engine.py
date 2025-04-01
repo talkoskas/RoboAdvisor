@@ -209,3 +209,4 @@ class ChatbotEngine:
 
     def _generate_comparison_summary(self, summaries):
         return "📊 Comparison Summary:\n\n" + "\n\n".join(summaries)
+
