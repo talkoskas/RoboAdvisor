@@ -9,13 +9,13 @@ class IntentDetector:
         """
         user_input = user_input.lower()
 
-        # Sector intent
-        sector_keywords = ["actual values", "sector", "companies in sector", "all"]
-        if any(keyword in user_input for keyword in sector_keywords):
-            sector_name = user_input.split("sector")[1].strip() if "sector" in user_input else None
-            if sector_name:
-                return {"intent": "sector_values", "sector": sector_name}
-            raise ValueError("Please specify the sector name for the query.")
+        # industry intent
+        industry_keywords = ["actual values", "industry", "companies in industry", "all"]
+        if any(keyword in user_input for keyword in industry_keywords):
+            industry_name = user_input.split("industry")[1].strip() if "industry" in user_input else None
+            if industry_name:
+                return {"intent": "industry_values", "industry": industry_name}
+            raise ValueError("Please specify the industry name for the query.")
 
         # Comparison intent
         compare_keywords = ["compare", "comparison", "difference between", "versus",
