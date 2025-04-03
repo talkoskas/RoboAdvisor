@@ -1,13 +1,13 @@
 import re
 from typing import List, Dict
 from spellchecker import SpellChecker
-
+from difflib import get_close_matches
 
 class IntentDetector:
     def __init__(self, ticker_mapping: Dict[str, str], industry_mapping: Dict[str, str]):
         self.ticker_mapping = ticker_mapping
         self.industry_mapping = industry_mapping
-
+        self.company_names = list(ticker_mapping.keys())
         self.intent_keywords = {
             "industry_values": ["actual values", "industry", "companies in industry", "all"],
             "compare": ["compare", "comparison", "difference between", "versus", "vs", "with", "and", "&", ","],
@@ -38,13 +38,21 @@ class IntentDetector:
             if corrected in keyword_list:
                 return corrected
         return None
-
+    
     def fuzzy_match_company(self, name: str) -> str:
-        name = self.spell_correct(name)
-        candidates = list(self.ticker_mapping.keys()) + list(self.ticker_mapping.values())
-        for c in candidates:
-            if name.lower() in c.lower():
-                return c
+        name = name.upper()
+
+        # Step 1: Try fuzzy match from Excel Company Names
+        close_matches = get_close_matches(name, self.company_names, n=1, cutoff=0.8)
+        if close_matches:
+            return close_matches[0]
+
+        # Step 2: Fallback to SpellChecker
+        corrected = self.spell.correction(name.lower()).upper()
+        close_matches = get_close_matches(corrected, self.company_names, n=1, cutoff=0.8)
+        if close_matches:
+            return close_matches[0]
+
         raise ValueError(f"Company '{name}' not found in mapping.")
 
     def fuzzy_match_industry(self, name: str) -> str:
