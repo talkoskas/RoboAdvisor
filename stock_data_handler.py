@@ -154,14 +154,14 @@ class StockDataHandler:
             "LightGBM": "/workspaces/FinalProj/LightGBM/LightGBM_forecast_stocks.csv",
             "XGBoost": "/workspaces/FinalProj/XGBoost/XGBoost_forecast_stocks.csv"
         }
-        best_model_df = pd.read_csv(self.best_model_path)
+        best_model_df = pd.read_csv(self.best_model_path, encoding='latin-1')
         model = best_model_df.loc[best_model_df["Company"] == stock, "Model"].values[0]
         path = forecast_paths.get(model)
 
         if not path:
             raise ValueError(f"No forecast file for model: {model}")
 
-        df = pd.read_csv(path)
+        df = pd.read_csv(path, encoding='latin-1')
         if model in ["LSTM", "GRU"]:
             df = df[df["Ticker"] == stock][["Date", "Forecast"]]
             df["Date"] = pd.to_datetime(df["Date"], dayfirst=True)
