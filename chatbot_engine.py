@@ -11,7 +11,16 @@ from langchain_google_genai import ChatGoogleGenerativeAI, HarmCategory, HarmBlo
 
 API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyCTNncuxKui7XIzrZWt1o_EtLIxiew8qtE")
 
-
+# Global Configuration
+API_KEY = 'AIzaSyCTNncuxKui7XIzrZWt1o_EtLIxiew8qtE'
+MAPPING_FILE_PATH = "company_name_to_ticker.xlsx"
+LSTM_CSV_PATH = "/workspaces/FinalProj/LSTM/actual_vs_pred_lstm.csv"
+XGBOOST_CSV_PATH = "/workspaces/FinalProj/XGBoost/model_XGBoost_metrics_and_predictions.csv"
+LIGHTGBM_CSV_PATH = "/workspaces/FinalProj/LightGBM/LightGBM_metrics_and_predictions.csv"
+BEST_MODEL_CSV = "/workspaces/FinalProj/Metrics/without_ARIMA_model_to_stock.csv"
+SECTORS_DF_PATH = "sectors_df.csv"
+comp_text = pd.read_excel(MAPPING_FILE_PATH).to_markdown(index=False)
+sectors_text = pd.read_csv(SECTORS_DF_PATH)[["Market Sector"]].to_markdown(index=False)
 def get_llm_instance():
     return ChatGoogleGenerativeAI(
         model="gemini-1.5-pro",
@@ -30,7 +39,28 @@ class ChatbotEngine:
         self.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
         self.prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a helpful AI assistant that talks about Israeli stock market."),
+            ("system", "you are a chat bot designed to help with stock analysis and "
+                   "recommendations over the Israeli (TA) stock market."
+                   " You will do function calling and textual answers."
+                   " When you return a graph, add analysis and recommendations. "
+                   "Please be nice and polite."
+                   "When youre needed to reference one or more companies, use tuple (ticker, company name)."
+                   "the tickers from the provided mapping file:"
+                    f"{comp_text}"
+                    "Alternatively, you might need to select sector names, use only from: "
+                    f"{sectors_text}"
+                    "for both files, use the exact name as shown in the table."
+                    "for example, if asked about company 'teba', assume user asked about TEVA "
+                   "and use the tuple ('TEVA','TEVA') in this order."
+                    "if asked about sector investments, use Investment & Holdings sector."
+                   "When asked about multiple companies, return a list of tuples."
+                   "like, if asked about 'poli' and 'teva', return [('POLI','POALIM'),('TEVA','TEVA')]."
+                   "use function calling if needed."
+                   "If the user asks to 'add' a stock to a previous comparison, call the 'compare' function again with"
+                   " all the stocks, including the new one. For example, if the user asks 'compare teva and leumi' "
+                   "and then 'add afcon', call compare with [('TEVA','TEVA'),('LUMI','LEUMI'),('AFCO','AFCON')]."
+                   "The 'compare' function is only for comparing specific stocks, not sectors."
+                   "look for continuation requests in general."),
             MessagesPlaceholder(variable_name="chat_history"),
             ("human", "{user_query}")
         ])
