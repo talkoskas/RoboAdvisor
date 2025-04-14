@@ -199,6 +199,9 @@ class AppManager:
                         st.plotly_chart(graph, use_container_width=True)
                     if message.get("text"):
                         st.markdown(message["text"])
+                    if message.get("deep_analysis"):
+                        st.markdown("### 🔍 Deeper Analysis")
+                        st.markdown(message["deep_analysis"])
             elif isinstance(message, AIMessage):
                 with st.chat_message("assistant"):
                     st.write(message.content)
@@ -228,6 +231,43 @@ class AppManager:
                     "text": structured_response.get("text", ""),
                     "graphs": structured_response.get("graphs", [])
                 })
+                    # Trigger deeper Gemini analysis AFTER initial summary is shown
+                if structured_response.get("intent") in ["graph", "compare", "industry_values"]:
+                    with st.spinner("🔍 Generating deeper AI insights..."):
+                        from chatbot_engine import get_llm_instance
+                        from langchain_core.prompts import ChatPromptTemplate
+                        from langchain_core.output_parsers import StrOutputParser
+
+                        # Format graph summary if available
+                        def summarize_graphs(graphs):
+                            if not graphs:
+                                return ""
+                            return f"({len(graphs)} interactive visualizations attached – actual, predicted, forecasted trends shown per request.)"
+
+                        # Final Gemini input = textual + context from graphs
+                        prompt_context = summarize_graphs(structured_response.get("graphs", []))
+                        final_summary = f"{structured_response['text']}\n\nContext:\n{prompt_context}"
+
+                        deep_prompt = ChatPromptTemplate.from_template(
+                            """You are a financial analyst. Based on the summary below, write a deeper analysis.
+                Summarize key insights, trends, anomalies, and possible conclusions for a beginner audience.
+
+                {summary}. at the end, add a disclaimer"""
+                        )
+
+                        deep_chain = deep_prompt | get_llm_instance() | StrOutputParser()
+                        deep_analysis = deep_chain.invoke({"summary": final_summary})
+
+                    with st.chat_message("assistant"):
+                        st.markdown("### 🔍 Deeper Analysis")
+                        st.markdown(deep_analysis)
+                    st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "deep_analysis": deep_analysis
+                })
+
+
+
                 return  # ✅ End here if intent handled
 
             # SECOND: fallback to Gemini via LangChain
