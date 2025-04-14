@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker, relationship
 import json
 
 # Set up database connection
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/postgres")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///users.db")
 engine = create_engine(DATABASE_URL)
 Base = declarative_base()
 Session = sessionmaker(bind=engine)

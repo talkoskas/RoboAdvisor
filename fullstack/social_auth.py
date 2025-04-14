@@ -9,6 +9,8 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 FACEBOOK_APP_ID = os.getenv("FACEBOOK_APP_ID", "")
 FACEBOOK_APP_SECRET = os.getenv("FACEBOOK_APP_SECRET", "")
+MICROSOFT_CLIENT_ID = os.getenv("MICROSOFT_CLIENT_ID", "")
+MICROSOFT_CLIENT_SECRET = os.getenv("MICROSOFT_CLIENT_SECRET", "")
 
 # OAuth redirect URIs
 REDIRECT_URI = os.getenv("REDIRECT_URI", "http://localhost:5000")
@@ -48,6 +50,25 @@ def get_facebook_auth_url():
     
     # Facebook OAuth endpoint
     auth_url = f"https://www.facebook.com/v16.0/dialog/oauth?{query_string}"
+    return auth_url
+
+def get_microsoft_auth_url():
+    """Get the Microsoft OAuth authorization URL"""
+    state = f"microsoft-{str(uuid.uuid4())}"
+    params = {
+        "client_id": MICROSOFT_CLIENT_ID,
+        "redirect_uri": REDIRECT_URI,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+        "response_mode": "query"
+    }
+    
+    # Convert params to URL query string
+    query_string = "&".join([f"{key}={value}" for key, value in params.items()])
+    
+    # Microsoft OAuth endpoint
+    auth_url = f"https://login.microsoftonline.com/common/oauth2/v2.0/authorize?{query_string}"
     return auth_url
 
 def handle_google_callback(code):
@@ -116,4 +137,38 @@ def handle_facebook_callback(code):
         return user_info
     except Exception as e:
         st.error(f"Error in Facebook authentication: {str(e)}")
+        return None
+
+def handle_microsoft_callback(code):
+    """Handle Microsoft OAuth callback and get user info"""
+    try:
+        # Exchange code for access token
+        token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+        token_data = {
+            "code": code,
+            "client_id": MICROSOFT_CLIENT_ID,
+            "client_secret": MICROSOFT_CLIENT_SECRET,
+            "redirect_uri": REDIRECT_URI,
+            "grant_type": "authorization_code",
+            "scope": "openid email profile"
+        }
+        
+        token_response = requests.post(token_url, data=token_data)
+        token_json = token_response.json()
+        
+        if "access_token" not in token_json:
+            st.error("Failed to get access token from Microsoft")
+            return None
+        
+        # Use access token to get user info
+        access_token = token_json["access_token"]
+        user_info_url = "https://graph.microsoft.com/v1.0/me"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        user_info_response = requests.get(user_info_url, headers=headers)
+        user_info = user_info_response.json()
+        
+        return user_info
+    except Exception as e:
+        st.error(f"Error in Microsoft authentication: {str(e)}")
         return None

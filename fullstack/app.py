@@ -53,261 +53,484 @@ def main():
         display_login()
 
 def display_login():
-    st.title("Stock Market AI Chatbot")
-    st.subheader("Login")
+    # Custom CSS for styling elements similar to the image
+    st.markdown("""
+    <style>
+    /* Main title styling */
+    h1 {
+        font-size: 2.5rem !important;
+        font-weight: 600 !important;
+        color: #333 !important;
+        margin-bottom: 2rem !important;
+    }
+    
+    /* Input field styling */
+    .stTextInput>div>div>input {
+        padding: 0.8rem !important;
+        font-size: 1rem !important;
+        border-radius: 5px !important;
+        border: 1px solid #ccc !important;
+    }
+    
+    /* Continue button styling */
+    .continue-btn button {
+        background-color: #10B981 !important;
+        color: white !important;
+        padding: 0.8rem !important;
+        font-size: 1rem !important;
+        font-weight: 500 !important;
+        border-radius: 5px !important;
+        border: none !important;
+        width: 100% !important;
+    }
+    
+    /* OR divider */
+    .divider {
+        display: flex;
+        align-items: center;
+        margin: 1.5rem 0;
+        color: #888;
+    }
+    
+    .divider-line {
+        flex-grow: 1;
+        height: 1px;
+        background-color: #ddd;
+    }
+    
+    .divider-text {
+        padding: 0 1rem;
+        font-size: 0.9rem;
+    }
+    
+    /* Social login buttons */
+    .social-btn {
+        margin-bottom: 0.75rem !important;
+        border: 1px solid #ddd !important;
+        background-color: white !important;
+        color: #333 !important;
+        border-radius: 5px !important;
+        padding: 0.5rem 1rem !important;
+        display: flex !important;
+        align-items: center !important;
+        width: 100% !important;
+        cursor: pointer !important;
+    }
+    
+    .social-btn img {
+        margin-right: 0.75rem;
+        height: 24px;
+        width: 24px;
+    }
+    
+    /* Sign Up link */
+    .signup-link {
+        text-align: center;
+        margin: 1rem 0;
+        font-size: 0.9rem;
+    }
+    
+    .signup-link a {
+        color: #10B981 !important;
+        text-decoration: none !important;
+        font-weight: 500 !important;
+    }
+    
+    /* Make container narrower */
+    .login-container {
+        max-width: 400px !important;
+        margin: 0 auto !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
     
     # Display login error if any
     if st.session_state.login_error:
         st.error(st.session_state.login_error)
         st.session_state.login_error = None
     
-    # Create a more compact and smaller login form
-    with st.form("login_form"):
-        # Create a container with custom CSS for smaller inputs
-        st.markdown("""
-        <style>
-        .small-input input {
-            padding: 0.5rem;
-            font-size: 0.9rem;
-            max-width: 250px;
-        }
-        .stButton button {
-            padding: 0.3rem 0.5rem;
-            font-size: 0.8rem;
-        }
-        .social-buttons button {
-            padding: 0.2rem 0.3rem;
-            font-size: 0.75rem;
-        }
-        </style>
-        """, unsafe_allow_html=True)
+    # Create the centered container for login
+    with st.container():
+        st.markdown('<div class="login-container">', unsafe_allow_html=True)
         
-        # Add the 'small-input' class to contain these inputs
-        with st.container():
-            st.markdown('<div class="small-input">', unsafe_allow_html=True)
-            username = st.text_input("Username", key="login_username")
+        # Title
+        st.title("Welcome back")
+        
+        # Login form
+        with st.form("login_form", clear_on_submit=False):
+            # Email input
+            email = st.text_input("Email address*", key="login_email")
+            
+            # Password input
             password = st.text_input("Password", type="password", key="login_password")
+            
+            # Remember me checkbox (hidden by default, can be enabled)
+            # Use CSS to hide the checkbox
+            st.markdown('<style>.hide-checkbox { display: none; }</style>', unsafe_allow_html=True)
+            with st.container():
+                st.markdown('<div class="hide-checkbox">', unsafe_allow_html=True)
+                remember_me = st.checkbox("Remember me", key="remember_me", value=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Submit button styled as green "Continue" button
+            st.markdown('<div class="continue-btn">', unsafe_allow_html=True)
+            submit = st.form_submit_button("Continue")
             st.markdown('</div>', unsafe_allow_html=True)
             
-            remember_me = st.checkbox("Remember me", key="remember_me")
-        
-        # Make the buttons more compact
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            submit = st.form_submit_button("Login")
-        with col2:
-            register = st.form_submit_button("Register")
-            
-        if submit:
-            if not username or not password:
-                st.error("Please enter both username and password")
-            else:
-                login_result = auth_manager.authenticate_user(username, password)
-                if login_result["success"]:
-                    # Set session state
-                    st.session_state.authenticated = True
-                    st.session_state.username = username
-                    
-                    # Set auth cookie if remember me is checked
-                    if remember_me:
-                        expiry = datetime.now() + timedelta(days=30)
-                        token = auth_manager.generate_auth_token(username)
-                        cookie_manager.set("auth_token", token, expires_at=expiry)
-                    
-                    st.success("Login successful")
-                    st.rerun()
+            if submit:
+                if not email or not password:
+                    st.error("Please enter both email and password")
                 else:
-                    st.error(login_result["message"])
+                    # Try to authenticate with email as username
+                    login_result = auth_manager.authenticate_user(email, password)
+                    if login_result["success"]:
+                        # Set session state
+                        st.session_state.authenticated = True
+                        st.session_state.username = email
+                        
+                        # Set auth cookie if remember me is checked
+                        if remember_me:
+                            expiry = datetime.now() + timedelta(days=30)
+                            token = auth_manager.generate_auth_token(email)
+                            cookie_manager.set("auth_token", token, expires_at=expiry)
+                        
+                        st.success("Login successful")
+                        st.rerun()
+                    else:
+                        st.error(login_result["message"])
         
-        if register:
-            st.session_state.registration = True
-            st.rerun()
-    
-    # Password reset link - make it smaller
-    if st.button("Forgot password?", key="forgot_pwd", type="secondary", help="Reset your password"):
-        st.session_state.reset_password = True
-        st.rerun()
-    
-    # Compact social login section
-    st.markdown("<div class='social-buttons'><p style='font-size: 0.8rem; margin-bottom: 0.5rem;'>Quick login:</p></div>", unsafe_allow_html=True)
-    
-    # More compact social login buttons
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button("Google", key="google_login", use_container_width=True):
-            auth_url = social_auth.get_google_auth_url()
-            st.markdown(f'<meta http-equiv="refresh" content="0;URL=\'{auth_url}\'">', unsafe_allow_html=True)
-    
-    with col2:
-        if st.button("Facebook", key="fb_login", use_container_width=True):
-            auth_url = social_auth.get_facebook_auth_url()
-            st.markdown(f'<meta http-equiv="refresh" content="0;URL=\'{auth_url}\'">', unsafe_allow_html=True)
+        # Sign Up link
+        st.markdown('<div class="signup-link">Don\'t have an account? <a href="#" onclick="document.querySelector(\'[data-testid=\'stForm\'] button[kind=secondaryFormSubmit]\').click();">Sign Up</a></div>', unsafe_allow_html=True)
+        
+        # Register button (hidden, triggered by the Sign Up link)
+        with st.container():
+            # Use container with custom CSS to hide the button
+            st.markdown('<style>.hide-button {display: none;}</style>', unsafe_allow_html=True)
+            st.markdown('<div class="hide-button">', unsafe_allow_html=True)
+            if st.button("Register", key="register_btn", type="secondary"):
+                st.session_state.registration = True
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Forgot password link (hidden, can be enabled)
+        with st.container():
+            st.markdown('<div class="hide-button">', unsafe_allow_html=True)
+            if st.button("Forgot password?", key="forgot_pwd", type="secondary", help="Reset your password"):
+                st.session_state.reset_password = True
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # OR divider
+        st.markdown('<div class="divider"><div class="divider-line"></div><div class="divider-text">OR</div><div class="divider-line"></div></div>', unsafe_allow_html=True)
+        
+        # Social login buttons
+        # Google login
+        google_btn_html = """
+        <button class="social-btn" id="google-login">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" alt="Google">
+            Continue with Google
+        </button>
+        <script>
+            document.getElementById('google-login').addEventListener('click', function() {
+                document.querySelector('[data-testid="stButton"] button[kind="secondary"]').click();
+            });
+        </script>
+        """
+        st.markdown(google_btn_html, unsafe_allow_html=True)
+        
+        # Hidden button for Google login
+        with st.container():
+            st.markdown('<div class="hide-button">', unsafe_allow_html=True)
+            if st.button("Google Login", key="google_login", type="secondary"):
+                auth_url = social_auth.get_google_auth_url()
+                st.markdown(f'<meta http-equiv="refresh" content="0;URL=\'{auth_url}\'">', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Microsoft login
+        ms_btn_html = """
+        <button class="social-btn" id="ms-login">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg" alt="Microsoft">
+            Continue with Microsoft Account
+        </button>
+        <script>
+            document.getElementById('ms-login').addEventListener('click', function() {
+                document.querySelector('[data-testid="stButton"] button[kind="secondary"]:nth-of-type(2)').click();
+            });
+        </script>
+        """
+        st.markdown(ms_btn_html, unsafe_allow_html=True)
+        
+        # Hidden button for Microsoft login
+        with st.container():
+            st.markdown('<div class="hide-button">', unsafe_allow_html=True)
+            if st.button("Microsoft Login", key="ms_login", type="secondary"):
+                auth_url = social_auth.get_microsoft_auth_url()
+                st.markdown(f'<meta http-equiv="refresh" content="0;URL=\'{auth_url}\'">', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown('</div>', unsafe_allow_html=True)  # Close login-container
 
 def display_registration():
-    st.title("Register New Account")
+    # Reuse the same CSS from login page
+    st.markdown("""
+    <style>
+    /* Main title styling */
+    h1 {
+        font-size: 2.5rem !important;
+        font-weight: 600 !important;
+        color: #333 !important;
+        margin-bottom: 2rem !important;
+    }
     
-    with st.form("registration_form"):
-        # Apply the same CSS style for consistency
-        st.markdown("""
-        <style>
-        .small-input input {
-            padding: 0.5rem;
-            font-size: 0.9rem;
-            max-width: 250px;
-        }
-        .stButton button {
-            padding: 0.3rem 0.5rem;
-            font-size: 0.8rem;
-        }
-        </style>
-        """, unsafe_allow_html=True)
+    /* Input field styling */
+    .stTextInput>div>div>input {
+        padding: 0.8rem !important;
+        font-size: 1rem !important;
+        border-radius: 5px !important;
+        border: 1px solid #ccc !important;
+    }
+    
+    /* Continue button styling */
+    .continue-btn button {
+        background-color: #10B981 !important;
+        color: white !important;
+        padding: 0.8rem !important;
+        font-size: 1rem !important;
+        font-weight: 500 !important;
+        border-radius: 5px !important;
+        border: none !important;
+        width: 100% !important;
+    }
+    
+    /* Login link */
+    .login-link {
+        text-align: center;
+        margin: 1rem 0;
+        font-size: 0.9rem;
+    }
+    
+    .login-link a {
+        color: #10B981 !important;
+        text-decoration: none !important;
+        font-weight: 500 !important;
+    }
+    
+    /* Make container narrower */
+    .registration-container {
+        max-width: 400px !important;
+        margin: 0 auto !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Create the centered container for registration
+    with st.container():
+        st.markdown('<div class="registration-container">', unsafe_allow_html=True)
         
-        # Create smaller form inputs
-        with st.container():
-            st.markdown('<div class="small-input">', unsafe_allow_html=True)
-            username = st.text_input("Username", key="reg_username")
-            email = st.text_input("Email", key="reg_email")
-            password = st.text_input("Password", type="password", key="reg_password")
-            confirm_password = st.text_input("Confirm Password", type="password", key="reg_confirm_password")
+        # Title
+        st.title("Create account")
+        
+        # Registration form
+        with st.form("registration_form", clear_on_submit=False):
+            # Username input
+            username = st.text_input("Username*", key="reg_username")
+            
+            # Email input
+            email = st.text_input("Email address*", key="reg_email")
+            
+            # Password input
+            password = st.text_input("Password*", type="password", key="reg_password")
+            
+            # Confirm password
+            confirm_password = st.text_input("Confirm Password*", type="password", key="reg_confirm_password")
+            
+            # Submit button styled as green "Create account" button
+            st.markdown('<div class="continue-btn">', unsafe_allow_html=True)
+            submit = st.form_submit_button("Create account")
             st.markdown('</div>', unsafe_allow_html=True)
-        
-        # More compact buttons
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            submit = st.form_submit_button("Register")
-        with col2:
-            back = st.form_submit_button("Back to Login")
-        
-        if submit:
-            if not username or not email or not password or not confirm_password:
-                st.error("Please fill in all fields")
-            elif password != confirm_password:
-                st.error("Passwords do not match")
-            elif not utils.is_valid_email(email):
-                st.error("Please enter a valid email address")
-            elif len(password) < 8:
-                st.error("Password must be at least 8 characters long")
-            else:
-                registration_result = user_management.register_user(username, email, password)
-                if registration_result["success"]:
-                    st.success("Registration successful. You can now login.")
-                    st.session_state.registration = False
-                    st.rerun()
+            
+            if submit:
+                if not username or not email or not password or not confirm_password:
+                    st.error("Please fill in all fields")
+                elif password != confirm_password:
+                    st.error("Passwords do not match")
+                elif not utils.is_valid_email(email):
+                    st.error("Please enter a valid email address")
+                elif len(password) < 8:
+                    st.error("Password must be at least 8 characters long")
                 else:
-                    st.error(registration_result["message"])
+                    registration_result = user_management.register_user(username, email, password)
+                    if registration_result["success"]:
+                        st.success("Registration successful. You can now login.")
+                        st.session_state.registration = False
+                        st.rerun()
+                    else:
+                        st.error(registration_result["message"])
         
-        if back:
-            st.session_state.registration = False
-            st.rerun()
+        # Login link
+        st.markdown('<div class="login-link">Already have an account? <a href="#" onclick="document.querySelector(\'[data-testid=\'stForm\'] button[kind=secondaryFormSubmit]\').click();">Sign In</a></div>', unsafe_allow_html=True)
+        
+        # Back button (hidden, triggered by the Sign In link)
+        with st.container():
+            st.markdown('<div class="hide-button">', unsafe_allow_html=True)
+            if st.button("Back to Login", key="back_to_login", type="secondary"):
+                st.session_state.registration = False
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+        st.markdown('</div>', unsafe_allow_html=True)  # Close registration-container
 
 def display_password_reset():
-    st.title("Reset Password")
+    # Reuse the same CSS from login page
+    st.markdown("""
+    <style>
+    /* Main title styling */
+    h1 {
+        font-size: 2.5rem !important;
+        font-weight: 600 !important;
+        color: #333 !important;
+        margin-bottom: 2rem !important;
+    }
+    
+    /* Input field styling */
+    .stTextInput>div>div>input {
+        padding: 0.8rem !important;
+        font-size: 1rem !important;
+        border-radius: 5px !important;
+        border: 1px solid #ccc !important;
+    }
+    
+    /* Continue button styling */
+    .continue-btn button {
+        background-color: #10B981 !important;
+        color: white !important;
+        padding: 0.8rem !important;
+        font-size: 1rem !important;
+        font-weight: 500 !important;
+        border-radius: 5px !important;
+        border: none !important;
+        width: 100% !important;
+    }
+    
+    /* Login link */
+    .login-link {
+        text-align: center;
+        margin: 1rem 0;
+        font-size: 0.9rem;
+    }
+    
+    .login-link a {
+        color: #10B981 !important;
+        text-decoration: none !important;
+        font-weight: 500 !important;
+    }
+    
+    /* Make container narrower */
+    .reset-container {
+        max-width: 400px !important;
+        margin: 0 auto !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
     
     # First step: Request email
     if "reset_email_sent" not in st.session_state:
         st.session_state.reset_email_sent = False
-    
-    if not st.session_state.reset_email_sent:
-        with st.form("reset_request_form"):
-            # Apply consistent CSS styles
-            st.markdown("""
-            <style>
-            .small-input input {
-                padding: 0.5rem;
-                font-size: 0.9rem;
-                max-width: 250px;
-            }
-            .stButton button {
-                padding: 0.3rem 0.5rem;
-                font-size: 0.8rem;
-            }
-            </style>
-            """, unsafe_allow_html=True)
+        
+    # Create the centered container for password reset
+    with st.container():
+        st.markdown('<div class="reset-container">', unsafe_allow_html=True)
+        
+        if not st.session_state.reset_email_sent:
+            # Title
+            st.title("Reset password")
             
-            # Smaller input field
-            with st.container():
-                st.markdown('<div class="small-input">', unsafe_allow_html=True)
-                email = st.text_input("Enter your email address", key="reset_email")
+            # Password reset request form
+            with st.form("reset_request_form", clear_on_submit=False):
+                # Email input
+                email = st.text_input("Email address*", key="reset_email")
+                
+                # Submit button styled as green "Send reset link" button
+                st.markdown('<div class="continue-btn">', unsafe_allow_html=True)
+                submit = st.form_submit_button("Send reset link")
                 st.markdown('</div>', unsafe_allow_html=True)
-            
-            # Compact buttons
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                submit = st.form_submit_button("Request Reset")
-            with col2:
-                back = st.form_submit_button("Back to Login")
-            
-            if submit:
-                if not email:
-                    st.error("Please enter your email address")
-                elif not utils.is_valid_email(email):
-                    st.error("Please enter a valid email address")
-                else:
-                    reset_result = user_management.request_password_reset(email)
-                    if reset_result["success"]:
-                        st.session_state.reset_email_sent = True
-                        st.success("Password reset instructions have been sent to your email")
-                        st.rerun()
+                
+                if submit:
+                    if not email:
+                        st.error("Please enter your email address")
+                    elif not utils.is_valid_email(email):
+                        st.error("Please enter a valid email address")
                     else:
-                        st.error(reset_result["message"])
+                        reset_result = user_management.request_password_reset(email)
+                        if reset_result["success"]:
+                            st.session_state.reset_email_sent = True
+                            st.success("Password reset instructions have been sent to your email")
+                            st.rerun()
+                        else:
+                            st.error(reset_result["message"])
             
-            if back:
-                st.session_state.reset_password = False
-                st.rerun()
-    # Second step: Enter reset code and new password
-    else:
-        with st.form("reset_password_form"):
-            # Apply consistent CSS styles
-            st.markdown("""
-            <style>
-            .small-input input {
-                padding: 0.5rem;
-                font-size: 0.9rem;
-                max-width: 250px;
-            }
-            .stButton button {
-                padding: 0.3rem 0.5rem;
-                font-size: 0.8rem;
-            }
-            </style>
-            """, unsafe_allow_html=True)
+            # Login link
+            st.markdown('<div class="login-link">Remember your password? <a href="#" onclick="document.querySelector(\'[data-testid=\'stForm\'] button[kind=secondaryFormSubmit]\').click();">Back to Sign In</a></div>', unsafe_allow_html=True)
             
-            # Smaller input fields
+            # Back button (hidden, triggered by the Sign In link)
             with st.container():
-                st.markdown('<div class="small-input">', unsafe_allow_html=True)
-                reset_code = st.text_input("Enter reset code from email", key="reset_code")
-                new_password = st.text_input("New Password", type="password", key="new_password")
-                confirm_password = st.text_input("Confirm New Password", type="password", key="confirm_new_password")
+                st.markdown('<div class="hide-button">', unsafe_allow_html=True)
+                if st.button("Back to Login", key="back_to_login", type="secondary"):
+                    st.session_state.reset_password = False
+                    st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
+                
+        # Second step: Enter reset code and new password
+        else:
+            # Title
+            st.title("Create new password")
             
-            # Compact buttons
-            col1, col2 = st.columns([1, 1])
-            with col1:
+            # Reset password form
+            with st.form("reset_password_form", clear_on_submit=False):
+                # Reset code input
+                reset_code = st.text_input("Reset code from email*", key="reset_code")
+                
+                # New password input
+                new_password = st.text_input("New Password*", type="password", key="new_password")
+                
+                # Confirm password
+                confirm_password = st.text_input("Confirm New Password*", type="password", key="confirm_new_password")
+                
+                # Submit button styled as green "Reset Password" button
+                st.markdown('<div class="continue-btn">', unsafe_allow_html=True)
                 submit = st.form_submit_button("Reset Password")
-            with col2:
-                back = st.form_submit_button("Back to Login")
-            
-            if submit:
-                if not reset_code or not new_password or not confirm_password:
-                    st.error("Please fill in all fields")
-                elif new_password != confirm_password:
-                    st.error("Passwords do not match")
-                elif len(new_password) < 8:
-                    st.error("Password must be at least 8 characters long")
-                else:
-                    reset_result = user_management.reset_password(reset_code, new_password)
-                    if reset_result["success"]:
-                        st.success("Password has been reset successfully. You can now login with your new password.")
-                        st.session_state.reset_password = False
-                        st.session_state.reset_email_sent = False
-                        st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+                if submit:
+                    if not reset_code or not new_password or not confirm_password:
+                        st.error("Please fill in all fields")
+                    elif new_password != confirm_password:
+                        st.error("Passwords do not match")
+                    elif len(new_password) < 8:
+                        st.error("Password must be at least 8 characters long")
                     else:
-                        st.error(reset_result["message"])
+                        reset_result = user_management.reset_password(reset_code, new_password)
+                        if reset_result["success"]:
+                            st.success("Password has been reset successfully. You can now login with your new password.")
+                            st.session_state.reset_password = False
+                            st.session_state.reset_email_sent = False
+                            st.rerun()
+                        else:
+                            st.error(reset_result["message"])
             
-            if back:
-                st.session_state.reset_password = False
-                st.session_state.reset_email_sent = False
-                st.rerun()
+            # Login link
+            st.markdown('<div class="login-link">Remember your password? <a href="#" onclick="document.querySelector(\'[data-testid=\'stForm\'] button[kind=secondaryFormSubmit]\').click();">Back to Sign In</a></div>', unsafe_allow_html=True)
+            
+            # Back button (hidden, triggered by the Sign In link)
+            with st.container():
+                st.markdown('<div class="hide-button">', unsafe_allow_html=True)
+                if st.button("Back to Login", key="back_to_login2", type="secondary"):
+                    st.session_state.reset_password = False
+                    st.session_state.reset_email_sent = False
+                    st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+        st.markdown('</div>', unsafe_allow_html=True)  # Close reset-container
 
 def display_main_app():
     st.title(f"Welcome to Stock Market AI Chatbot, {st.session_state.username}!")
