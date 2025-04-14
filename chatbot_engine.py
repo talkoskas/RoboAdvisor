@@ -77,13 +77,19 @@ class ChatbotEngine:
             intent = intent_data.get("intent")
 
             if intent == "industry_values" and "industry" in intent_data:
-                return self._handle_industry_intent(intent_data)
+                response = self._handle_industry_intent(intent_data)
             elif intent == "graph" and "company" in intent_data:
-                return self._handle_graph_intent(intent_data)
+                response = self._handle_graph_intent(intent_data)
             elif intent == "compare" and "companies" in intent_data and len(intent_data["companies"]) >= 2:
-                return self._handle_compare_intent(intent_data)
+                response = self._handle_compare_intent(intent_data)
+            else:
+                response_chunks = self._stream_response(user_input)
+                return {"text": "".join(response_chunks), "intent": "fallback"}
 
-            return {"text_stream": self._stream_response(user_input)}
+            response["intent"] = intent  # ✅ attach intent to return value
+            response["raw_input"] = user_input
+            return response
+
 
         except Exception as e:
             return {"text": f"Oops, something went wrong 😱: {str(e)}"}
@@ -239,4 +245,20 @@ class ChatbotEngine:
 
     def _generate_comparison_summary(self, summaries):
         return "📊 Comparison Summary:\n\n" + "\n\n".join(summaries)
+    def _generate_deeper_analysis(self, summary: str, context_info: str = "") -> str:
+        """
+        Uses Gemini to generate deeper analysis from an existing summary and optional metadata.
+        """
+        prompt_text = (
+            "You are a financial analyst. Based on the given summary, values, and context, "
+            "write a **deeper analysis** including patterns, anomalies, risks, and insights. "
+            "Explain trends and make it educational for a beginner-level audience.\n\n"
+            f"Context:\n{context_info}\n\nSummary:\n{summary}"
+        )
+
+        llm = get_llm_instance()
+        chain = ChatPromptTemplate.from_template("{prompt}") | llm | StrOutputParser()
+        result = chain.invoke({"prompt": prompt_text})
+        return result
+
 
