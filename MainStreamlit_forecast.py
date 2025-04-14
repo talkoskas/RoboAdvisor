@@ -103,13 +103,92 @@ class AppManager:
 
 
     def run(self):
+        if "accepted_disclaimer" not in st.session_state:
+         st.session_state.accepted_disclaimer = False
+
+        if not st.session_state.accepted_disclaimer:
+            st.title("🤖 Welcome to the Robo Advisor – Israeli Stock Market")
+
+            st.markdown("## 📊 Stock Analysis and Forecasting Application")
+            st.markdown("""
+        This is a **Streamlit-based tool** that helps you analyze and forecast stock performance, especially for companies in the Israeli (TA) stock market.
+
+        It combines **advanced machine learning models** like **LSTM**, **GRU**, **XGBoost** and **LightGBM** to deliver clear insights into stock behavior.
+
+        Whether you're a student, investor, or just curious — this app makes stock analysis simple, visual, and accessible.
+        """)
+
+            st.markdown("## 🧠 What Can This App Do?")
+            st.markdown("""
+        - 📈 **Visualize actual vs predicted stock performance**
+        - 🔮 **Forecast future trends using advanced models**
+        - 🏭 **Explore industry-wide behavior across sectors**
+        - ⚖️ **Compare multiple stocks side-by-side**
+        - 🤖 **Interact with an AI chatbot** that answers your questions and generates graphs
+
+        The chatbot uses **natural language processing** to understand your queries and provide visual + textual feedback.
+        """)
+
+            st.markdown("## ⚙️ How Does It Work?")
+            st.markdown("""
+        The app uses machine learning models to detect patterns in historical stock prices and predict future performance:
+
+        - **LSTM / GRU** → sequence-aware models for time-series forecasting  
+        - **XGBoost / LightGBM** → powerful tree-based models for structured tabular data  
+
+        It visualizes **actual**, **predicted**, and **forecasted** data for each company or sector in interactive graphs.
+        """)
+
+            st.markdown("## 💬 How Do I Use It?")
+            st.markdown("""
+        You can ask the chatbot anything like:
+
+        - 🟢 `show me the graph of leumi`
+        - 🟢 `compare leumi and poalim`
+        - 🟢 `show me all companies in industry Banks - Regional`
+
+        The app will detect your intent and generate relevant insights and visuals.
+        """)
+
+            st.markdown("## 🎓 Academic Context")
+            st.markdown("""
+        This application was developed as part of a **Data Science Capstone Project** at **Ben-Gurion University (BGU)**, by students in the Department of Software and Information Systems Engineering.
+        """)
+
+            st.markdown("## ⚠️ Disclaimer")
+            st.warning("""
+        The chatbot's responses are **not binding financial recommendations** and do **not replace professional advice**.  
+        All outputs are based on historical data and model estimations and are provided for educational purposes only.
+        """)
+
+            st.markdown("")
+
+            if st.button("✅ I understand and wish to continue"):
+                st.session_state.accepted_disclaimer = True
+                st.rerun()
+
+            return  # prevent chatbot from rendering
+
+
         st.set_page_config(page_title="Robo Advisor", layout="wide")
         st.title("🤖 Robo Advisor – Israeli Stock Market")
-
         st.sidebar.title("About")
         st.sidebar.info("This chatbot provides stock analysis using historical and forecasted data.")
 
-        # Display previous messages
+        # ✅ Always keep the button pills here (static location)
+        default_prompts = [
+            "show me the graph of leumi",
+            "compare leumi and poalim",
+            "show me all companies in industry Banks - Regional"
+        ]
+
+        cols = st.columns(len(default_prompts))
+        selected_prompt = None
+        for i, p in enumerate(default_prompts):
+            if cols[i].button(p, use_container_width=True):
+                selected_prompt = p
+
+        # ✅ Show chat history below that
         for message in st.session_state.chat_history:
             if isinstance(message, HumanMessage):
                 with st.chat_message("user"):
@@ -120,14 +199,15 @@ class AppManager:
                         st.plotly_chart(graph, use_container_width=True)
                     if message.get("text"):
                         st.markdown(message["text"])
-            elif isinstance(message, AIMessage):  # fallback for old messages
+            elif isinstance(message, AIMessage):
                 with st.chat_message("assistant"):
                     st.write(message.content)
 
+        # ✅ Always show chat input
+        manual_input = st.chat_input("What would you like to know?")
+        prompt = selected_prompt or manual_input
 
-
-        # Handle new user input
-        if prompt := st.chat_input("What would you like to know?"):
+        if prompt:
             user_msg = HumanMessage(content=prompt)
             st.session_state.chat_history.append(user_msg)
             with st.chat_message("user"):
@@ -162,8 +242,8 @@ class AppManager:
             def get_response(user_query, conversation_history):
                 prompt_template = """
                 You are a helpful assistant specialized in Israeli stock market data. If no intent is detected, answer naturally.
-                note that there will be typos, so correct them.
-                Your users are new to the stock market, soo not only present data and graph, but explain deeply
+                Note that there will be typos, so correct them.
+                Your users are new to the stock market, so not only present data and graph, but explain deeply.
 
                 Chat history:
                 {conversation_history}
@@ -198,6 +278,7 @@ class AppManager:
 
             # ✅ Save Gemini response correctly to history
             st.session_state.chat_history.append(AIMessage(content=full_response))
+
 
 
 
