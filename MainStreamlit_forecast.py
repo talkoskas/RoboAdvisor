@@ -28,7 +28,7 @@ from chatbot_engine import ChatbotEngine
 warnings.filterwarnings("ignore")
 
 # Global Configuration
-API_KEY = 'AIzaSyCTNncuxKui7XIzrZWt1o_EtLIxiew8qtE'
+API_KEY = 'AIzaSyC3XqPeca_kNxjsSb64aHvJbJvyakyGKQI'
 MAPPING_FILE_PATH = "company_name_to_ticker.xlsx"
 LSTM_CSV_PATH = "/workspaces/FinalProj/LSTM/actual_vs_pred_lstm.csv"
 XGBOOST_CSV_PATH = "/workspaces/FinalProj/XGBoost/model_XGBoost_metrics_and_predictions.csv"
@@ -69,7 +69,7 @@ class AppManager:
     def initialize_model(self):
         genai.configure(api_key=self.api_key)
         return ChatGoogleGenerativeAI(
-                    model="gemini-1.5-flash-8b",
+                    model="gemini-2.0-flash-lite",
                     temperature=0.3,
                     google_api_key=self.api_key
                 )
@@ -249,7 +249,7 @@ class AppManager:
                         final_summary = f"{structured_response['text']}\n\nContext:\n{prompt_context}"
 
                         deep_prompt = ChatPromptTemplate.from_template(
-                            """You are a financial analyst. Based on the summary below, write a deeper analysis.
+                            """You are a financial analyst. Based on the summary below, write a deeper analysis, up to 300 words.
                 Summarize key insights, trends, anomalies, and possible conclusions for a beginner audience.
 
                 {summary}. at the end, add a disclaimer"""
@@ -276,24 +276,37 @@ class AppManager:
                 else f"Assistant: {m.content}" if isinstance(m, AIMessage)
                 else f"Assistant: {m.get('text', '')}" if isinstance(m, dict) and m.get("role") == "assistant"
                 else ""
-                for m in st.session_state.chat_history
+                for m in get_clean_chat_history()
             ])
 
+            def get_clean_chat_history():
+                lines = []
+                for m in st.session_state.chat_history:
+                    if isinstance(m, HumanMessage):
+                        lines.append(f"User: {m.content}")
+                    elif isinstance(m, AIMessage):
+                        lines.append(f"Assistant: {m.content}")
+                    elif isinstance(m, dict):
+                        if m.get("role") == "assistant":
+                            if "deep_analysis" in m:
+                                lines.append(f"Assistant: {m['deep_analysis']}")
+                            elif "text" in m:
+                                lines.append(f"Assistant: {m['text']}")
+                        elif m.get("role") == "user" and "text" in m:
+                            lines.append(f"User: {m['text']}")
+                return "\n".join(lines)
+            
             def get_response(user_query, conversation_history):
-                prompt_template = """
-                You are a helpful assistant specialized in Israeli stock market data. If no intent is detected, answer naturally.
-                Note that there will be typos, so correct them.
-                Your users are new to the stock market, so not only present data and graph, but explain deeply.
+                prompt = f"""The following is a conversation between a user and an AI stock assistant. The assistant should remember and refer back to previous facts, including names. Use the context to generate a helpful response.
 
-                Chat history:
                 {conversation_history}
 
-                User question:
-                {user_query}
-                """
-                prompt = ChatPromptTemplate.from_template(prompt_template)
+                User: {user_query}
+                Assistant:"""
+                prompt = ChatPromptTemplate.from_template(prompt)
+                print("prompt:", prompt)
                 llm = ChatGoogleGenerativeAI(
-                    model="gemini-1.5-flash",
+                    model="gemini-2.0-flash-lite",
                     temperature=0.3,
                     google_api_key=self.api_key,
                     stream=True
@@ -306,6 +319,8 @@ class AppManager:
 
             # Stream Gemini response
             stream = get_response(prompt, conversation_history)
+            print("stream:",stream)
+
             with st.chat_message("assistant"):
                 message_placeholder = st.empty()  # Reserve a spot for streamed text
                 full_response = ""
