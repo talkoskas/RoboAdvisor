@@ -1,7 +1,8 @@
 import os
 import pandas as pd
+import streamlit as st
 from datetime import datetime, timedelta
-
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
 from langchain_core.output_parsers import StrOutputParser
@@ -9,10 +10,10 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_google_genai import ChatGoogleGenerativeAI, HarmCategory, HarmBlockThreshold
 
 
-API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyCTNncuxKui7XIzrZWt1o_EtLIxiew8qtE")
+API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyC3XqPeca_kNxjsSb64aHvJbJvyakyGKQI")
 
 # Global Configuration
-API_KEY = 'AIzaSyCTNncuxKui7XIzrZWt1o_EtLIxiew8qtE'
+API_KEY = 'AIzaSyC3XqPeca_kNxjsSb64aHvJbJvyakyGKQI'
 MAPPING_FILE_PATH = "company_name_to_ticker.xlsx"
 LSTM_CSV_PATH = "/workspaces/FinalProj/LSTM/actual_vs_pred_lstm.csv"
 XGBOOST_CSV_PATH = "/workspaces/FinalProj/XGBoost/model_XGBoost_metrics_and_predictions.csv"
@@ -23,7 +24,7 @@ comp_text = pd.read_excel(MAPPING_FILE_PATH).to_markdown(index=False)
 sectors_text = pd.read_csv(SECTORS_DF_PATH)[["Market Sector"]].to_markdown(index=False)
 def get_llm_instance():
     return ChatGoogleGenerativeAI(
-        model="gemini-1.5-pro",
+        model="gemini-2.0-flash-lite",
         stream=True,
         temperature=0.3,
         google_api_key=API_KEY,
@@ -95,10 +96,28 @@ class ChatbotEngine:
             return {"text": f"Oops, something went wrong 😱: {str(e)}"}
 
     def _stream_response(self, user_query):
-        return self.chain.stream({
-            "user_query": user_query,
-            "chat_history": self.memory.chat_memory.messages
-        })
+            def convert_message(msg):
+                if isinstance(msg, HumanMessage):
+                    return {"role": "user", "content": msg.content}
+                elif isinstance(msg, AIMessage):
+                    return {"role": "assistant", "content": msg.content}
+                elif isinstance(msg, dict):
+                    if "role" in msg and "content" in msg:
+                        return msg  # already good
+                    elif "role" in msg and "text" in msg:
+                        return {"role": msg["role"], "content": msg["text"]}
+                    elif "role" in msg and "deep_analysis" in msg:
+                        return {"role": msg["role"], "content": msg["deep_analysis"]}
+                return None
+
+            formatted_history = [convert_message(m) for m in st.session_state.chat_history]
+            formatted_history = [m for m in formatted_history if m is not None]
+
+            return self.chain.stream({
+                "user_query": user_query,
+                "chat_history": formatted_history
+            })
+
 
     def _record_response(self, user_input, response):
         self.memory.chat_memory.add_user_message(user_input)
