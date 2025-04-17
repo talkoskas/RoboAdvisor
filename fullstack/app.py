@@ -60,7 +60,7 @@ def display_login():
     h1 {
         font-size: 2.5rem !important;
         font-weight: 600 !important;
-        color: #333 !important;
+        color: #FF0000 !important;
         margin-bottom: 2rem !important;
     }
     
@@ -154,7 +154,7 @@ def display_login():
         st.markdown('<div class="login-container">', unsafe_allow_html=True)
         
         # Title
-        st.title("Welcome back")
+        st.title("Hello There !")
         
         # Login form
         with st.form("login_form", clear_on_submit=False):
