@@ -3,7 +3,7 @@ import numpy as np
 import os
 import pickle
 from datetime import timedelta
-
+import ast
 
 class StockDataHandler:
     def __init__(self, ticker_mapping, model_paths: dict, sector_path: str, best_model_path: str):
@@ -36,8 +36,8 @@ class StockDataHandler:
 
 
     def _process_model_data(self, company_data, start_date):
-        company_data["y_test"] = eval(company_data["y_test"])
-        company_data["y_pred"] = eval(company_data["y_pred"])
+        company_data["y_test"] = ast.literal_eval((company_data["y_test"]))
+        company_data["y_pred"] = ast.literal_eval((company_data["y_pred"]))
 
         actual_df = pd.DataFrame({
             "Date": pd.date_range(start=start_date, periods=len(company_data["y_test"])),
@@ -168,7 +168,7 @@ class StockDataHandler:
         else:
             df = df[df["Ticker"] == stock][["Day", "Forecast"]]
             df["Day"] = df["Day"].str.extract(r"Day_(\d+)").astype(int)
-            df["Date"] = [last_predicted_date + timedelta(days=int(x)) for x in df["Day"].iloc[:, 0]]
+            df["Date"] = [last_predicted_date + timedelta(days=int(x)) for x in df["Day"]]
             df.drop(columns="Day", inplace=True)
 
         # Adjust forecast to start from last predicted value
