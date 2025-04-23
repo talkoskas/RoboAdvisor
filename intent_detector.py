@@ -2,6 +2,7 @@ import re
 from typing import List, Dict
 from spellchecker import SpellChecker
 from difflib import get_close_matches
+import string
 
 class IntentDetector:
     def __init__(self, ticker_mapping: Dict[str, str], industry_mapping: Dict[str, str]):
@@ -22,6 +23,8 @@ class IntentDetector:
         all_vocab += list(industry_mapping.keys()) + self.keyword_vocab
         self.spell.word_frequency.load_words([w.lower() for w in all_vocab])
 
+    def clean_name(self, name: str) -> str:
+        return name.strip().translate(str.maketrans('', '', string.punctuation)).upper()
     def normalize_text(self, text: str) -> str:
         text = text.lower()
         text = re.sub(r"[-:]", " ", text)
@@ -40,7 +43,8 @@ class IntentDetector:
         return None
     
     def fuzzy_match_company(self, name: str) -> str:
-        name = name.upper()
+        name = self.clean_name(name)
+
 
         # Step 1: Try fuzzy match from Excel Company Names
         close_matches = get_close_matches(name, self.company_names, n=1, cutoff=0.8)
@@ -56,6 +60,7 @@ class IntentDetector:
         raise ValueError(f"Company '{name}' not found in mapping.")
 
     def fuzzy_match_industry(self, name: str) -> str:
+        name = self.clean_name(name)
         name = self.spell_correct(name)
         for industry in self.industry_mapping:
             if name in industry.lower():
@@ -105,6 +110,7 @@ class IntentDetector:
         companies = [c.strip() for c in user_input.split(",") if c.strip()]
         matched = []
         for c in companies:
+            c = self.clean_name(c)
             try:
                 matched_name = self.fuzzy_match_company(c)
                 matched.append(matched_name)
@@ -116,7 +122,7 @@ class IntentDetector:
         return list(set(matched))
 
     def resolve_ticker(self, user_input: str) -> str:
-        user_input = user_input.strip().upper()
+        user_input = self.clean_name(user_input)
         for company_name, ticker in self.ticker_mapping.items():
             if user_input in company_name or user_input == ticker:
                 return ticker
