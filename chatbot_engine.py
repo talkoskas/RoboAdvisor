@@ -260,22 +260,39 @@ class ChatbotEngine:
         end_date = datetime(2025, 3, 13)
 
         industry_avg_frames = []
+        summaries = []
 
         for industry in industries:
             actual_df = self.data_handler.get_industry_actuals(industry, start_date, end_date)
             if actual_df.empty:
                 continue
+
             avg_df = actual_df.groupby("Date")["Actual"].mean().reset_index()
             avg_df["Industry"] = industry
             industry_avg_frames.append(avg_df)
+
+            # Basic summary per sector
+            first = avg_df["Actual"].iloc[0]
+            last = avg_df["Actual"].iloc[-1]
+            trend = "upward 📈" if last > first else "downward 📉"
+            summaries.append(f"- {industry}: Start={first:.2f}, End={last:.2f}, Trend={trend}")
 
         if not industry_avg_frames:
             return {"text": "No data found for the selected industries."}
 
         combined_df = pd.concat(industry_avg_frames)
         fig = self.graph_generator.generate_sector_comparison_graph(combined_df)
-        summary = f"📊 Sector comparison between industries:\n\n" + "\n".join([f"- {ind}" for ind in industries])
-        return {"text": summary, "graphs": [fig]}
+
+        summary_text = f"📊 Sector comparison between industries:\n\n" + "\n".join(summaries)
+
+        # 🔍 Generate deeper analysis using Gemini
+        deep_analysis = self._generate_deeper_analysis(summary_text, context_info="Sector Comparison")
+
+        return {
+            "text": summary_text + "\n\n🔍 **Deeper Analysis**\n\n" + deep_analysis,
+            "graphs": [fig]
+        }
+
 
 
     def _generate_industry_summary(self, actual_df, predicted_df, forecast_df, name_map, industry):
