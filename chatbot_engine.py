@@ -74,15 +74,50 @@ class ChatbotEngine:
 
     def handle_input(self, user_input: str):
         try:
-            intent_data = self.intent_detector.detect(user_input)
+            last_intent = st.session_state.get("last_intent")
+            intent_data = self.intent_detector.detect(user_input, last_intent=last_intent)
+
             intent = intent_data.get("intent")
+            st.session_state.last_intent = intent
+            # 🔁 If user said "add <company>" or "compare with <company>", build compare list
+            if intent == "compare" and "add_company" in intent_data:
+                previous = st.session_state.get("last_companies") or []
+
+                # If only 1 previous stock (from 'graph'), promote it to compare list
+                if not previous and st.session_state.get("last_company"):
+                    previous = [st.session_state["last_company"]]
+
+                combined = list(set(previous + [intent_data["add_company"]]))
+                response = self._handle_compare_intent({"companies": combined})
+
+                # Update session state
+                st.session_state.last_companies = combined
+                st.session_state.last_intent = "compare"
+
+                return {**response, "intent": "compare", "raw_input": user_input}
+
+            if intent == "sector_comparison" and "add_industry" in intent_data:
+                previous = st.session_state.get("last_industry")
+
+                if not previous:
+                    return {"text": "Oops, I couldn't find a previous industry to compare with."}
+
+                industries = [previous, intent_data["add_industry"]]
+                response = self._handle_sector_comparison_intent(industries)
+
+                st.session_state.last_intent = "sector_comparison"
+                st.session_state.last_industries = industries
+                return {**response, "intent": "sector_comparison", "raw_input": user_input}
 
             if intent == "industry_values" and "industry" in intent_data:
                 response = self._handle_industry_intent(intent_data)
+                st.session_state.last_industry = intent_data.get("industry")
             elif intent == "graph" and "company" in intent_data:
                 response = self._handle_graph_intent(intent_data)
+                st.session_state.last_company = intent_data.get("company")
             elif intent == "compare" and "companies" in intent_data and len(intent_data["companies"]) >= 2:
                 response = self._handle_compare_intent(intent_data)
+                st.session_state.last_companies = intent_data.get("companies")
             else:
                 response_chunks = self._stream_response(user_input)
                 return {"text": "".join(response_chunks), "intent": "fallback"}
@@ -156,6 +191,8 @@ class ChatbotEngine:
         fig_forecast = self.graph_generator.generate_industry_graph(full_forecast_df, "Forecasted", industry)
 
         summary = self._generate_industry_summary(actual_df, predicted_df, full_forecast_df, ticker_to_company, industry)
+        st.session_state.last_industry = industry
+
         return {"text": summary, "graphs": [fig_actual, fig_pred, fig_forecast]}
 
     def _handle_graph_intent(self, intent_data):
@@ -218,6 +255,28 @@ class ChatbotEngine:
         fig = self.graph_generator.generate_comparison_graph(combined_dataframes, ticker_to_company)
         summary = self._generate_comparison_summary(summaries)
         return {"text": summary, "graphs": [fig]}
+    def _handle_sector_comparison_intent(self, industries):
+        start_date = datetime(2024, 1, 1)
+        end_date = datetime(2025, 3, 13)
+
+        industry_avg_frames = []
+
+        for industry in industries:
+            actual_df = self.data_handler.get_industry_actuals(industry, start_date, end_date)
+            if actual_df.empty:
+                continue
+            avg_df = actual_df.groupby("Date")["Actual"].mean().reset_index()
+            avg_df["Industry"] = industry
+            industry_avg_frames.append(avg_df)
+
+        if not industry_avg_frames:
+            return {"text": "No data found for the selected industries."}
+
+        combined_df = pd.concat(industry_avg_frames)
+        fig = self.graph_generator.generate_sector_comparison_graph(combined_df)
+        summary = f"📊 Sector comparison between industries:\n\n" + "\n".join([f"- {ind}" for ind in industries])
+        return {"text": summary, "graphs": [fig]}
+
 
     def _generate_industry_summary(self, actual_df, predicted_df, forecast_df, name_map, industry):
         def summarize(df, col):
@@ -279,6 +338,5 @@ class ChatbotEngine:
         chain = ChatPromptTemplate.from_template("{prompt}") | llm | StrOutputParser()
         result = chain.invoke({"prompt": prompt_text})
         return result
-
 
 
