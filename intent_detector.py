@@ -67,9 +67,20 @@ class IntentDetector:
                 return self.industry_mapping[industry]
         raise ValueError(f"Industry '{name}' not recognized.")
 
-    def detect(self, user_input: str) -> dict:
+    def detect(self, user_input: str, last_intent: str = None) -> dict:
         user_input = self.normalize_text(user_input)
+        # 🔁 1. Handle 'add <company>'
+        if user_input.startswith("add "):
+            name = self.clean_name(user_input.replace("add ", ""))
+            return {"intent": "compare", "add_company": self.fuzzy_match_company(name)}
 
+        # 🔁 2. Handle 'compare with <company>'
+        if user_input.startswith("compare with "):
+            name = self.clean_name(user_input.replace("compare with ", ""))
+            try:
+                return {"intent": "compare", "add_company": self.fuzzy_match_company(name)}
+            except:
+                return {"intent": "sector_comparison", "add_industry": self.fuzzy_match_industry(name)}
         if self.fuzzy_contains_keyword(user_input, self.intent_keywords["industry_values"]):
             industry_name = self.extract_industry_name(user_input)
             return {"intent": "industry_values", "industry": industry_name}
@@ -82,7 +93,25 @@ class IntentDetector:
                 return {"intent": "compare", "companies": self.extract_company_names(user_input)}
             return {"intent": "graph", "company": self.extract_company_name(user_input)}
 
+        # ⬇️ New: fallback to last intent
+        if last_intent == "graph":
+            try:
+                return {"intent": "graph", "company": self.extract_company_name(user_input)}
+            except:
+                pass
+        if last_intent == "compare":
+            try:
+                return {"intent": "compare", "companies": self.extract_company_names(user_input)}
+            except:
+                pass
+        if last_intent == "industry_values":
+            try:
+                return {"intent": "industry_values", "industry": self.extract_industry_name(user_input)}
+            except:
+                pass
+
         return {"intent": "text"}
+
 
     def extract_industry_name(self, user_input: str) -> str:
         for keyword in self.intent_keywords["industry_values"]:
