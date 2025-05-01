@@ -1,6 +1,7 @@
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import timedelta
+import plotly.express as px
 
 class GraphGenerator:
     def __init__(self):
@@ -111,6 +112,19 @@ class GraphGenerator:
         fig.update_xaxes(tickformat='%Y-%m', tickangle=45)
         fig.update_yaxes(showgrid=True)
         return self.customize(fig)
+    def generate_sector_comparison_graph(self, df: pd.DataFrame):
+
+        fig = px.line(
+            df,
+            x="Date",
+            y="Actual",
+            color="Industry",
+            title="Sector Average Comparison",
+            labels={"Actual": "Average Actual Value"}
+        )
+        fig.update_layout(legend_title="Industry", plot_bgcolor="#fdf6e3")
+        return fig
+
 
     def customize(self, fig):
         """
