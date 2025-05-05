@@ -19,3 +19,4 @@ pyjwt
 psycopg2-binary
 sqlalchemy
 requests
+python-Levenshtein
