@@ -15,6 +15,7 @@ import warnings
 import time
 import emoji
 from copy import deepcopy
+from chatbot_engine import get_llm_instance
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -32,7 +33,7 @@ API_KEY = 'AIzaSyC3XqPeca_kNxjsSb64aHvJbJvyakyGKQI'
 MAPPING_FILE_PATH = "company_name_to_ticker.xlsx"
 LSTM_CSV_PATH = "/workspaces/FinalProj/LSTM/actual_vs_pred_lstm_without_reports.csv"
 XGBOOST_CSV_PATH = "/workspaces/FinalProj/XGBoost/model_XGBoost_metrics_and_predictions_without_report_parameters.csv"
-LIGHTGBM_CSV_PATH = "/workspaces/FinalProj/LightGBM/LightGBM_metrics_and_predictions_total.csv"
+LIGHTGBM_CSV_PATH = "/workspaces/FinalProj/LightGBM/model_LightGBM_metrics_and_predictions_total.csv"
 BEST_MODEL_CSV = "/workspaces/FinalProj/Metrics/without_ARIMA_model_to_stock.csv"
 SECTORS_DF_PATH = "sectors_df.csv"
 
@@ -103,6 +104,22 @@ class AppManager:
 
 
     def run(self):
+        def get_clean_chat_history():
+                lines = []
+                for m in st.session_state.chat_history:
+                    if isinstance(m, HumanMessage):
+                        lines.append(f"User: {m.content}")
+                    elif isinstance(m, AIMessage):
+                        lines.append(f"Assistant: {m.content}")
+                    elif isinstance(m, dict):
+                        if m.get("role") == "assistant":
+                            if "deep_analysis" in m:
+                                lines.append(f"Assistant: {m['deep_analysis']}")
+                            elif "text" in m:
+                                lines.append(f"Assistant: {m['text']}")
+                        elif m.get("role") == "user" and "text" in m:
+                            lines.append(f"User: {m['text']}")
+                return "\n".join(lines)
         if "accepted_disclaimer" not in st.session_state:
          st.session_state.accepted_disclaimer = False
 
@@ -234,9 +251,6 @@ class AppManager:
                     # Trigger deeper Gemini analysis AFTER initial summary is shown
                 if structured_response.get("intent") in ["graph", "compare", "industry_values"]:
                     with st.spinner("🔍 Generating deeper AI insights..."):
-                        from chatbot_engine import get_llm_instance
-                        from langchain_core.prompts import ChatPromptTemplate
-                        from langchain_core.output_parsers import StrOutputParser
 
                         # Format graph summary if available
                         def summarize_graphs(graphs):
@@ -279,22 +293,6 @@ class AppManager:
                 for m in get_clean_chat_history()
             ])
 
-            def get_clean_chat_history():
-                lines = []
-                for m in st.session_state.chat_history:
-                    if isinstance(m, HumanMessage):
-                        lines.append(f"User: {m.content}")
-                    elif isinstance(m, AIMessage):
-                        lines.append(f"Assistant: {m.content}")
-                    elif isinstance(m, dict):
-                        if m.get("role") == "assistant":
-                            if "deep_analysis" in m:
-                                lines.append(f"Assistant: {m['deep_analysis']}")
-                            elif "text" in m:
-                                lines.append(f"Assistant: {m['text']}")
-                        elif m.get("role") == "user" and "text" in m:
-                            lines.append(f"User: {m['text']}")
-                return "\n".join(lines)
             
             def get_response(user_query, conversation_history):
                 prompt = f"""The following is a conversation between a user and an AI stock assistant. The assistant should remember and refer back to previous facts, including names. Use the context to generate a helpful response.
