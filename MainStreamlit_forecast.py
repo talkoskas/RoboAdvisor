@@ -51,7 +51,7 @@ class AppManager:
         self.intent_detector = IntentDetector(self.ticker_mapping, self.industry_mapping)
         self.model_paths = {
             "LSTM": LSTM_CSV_PATH,
-            "GRU": "/workspaces/FinalProj/GRU/actual_vs_pred_gru.csv",
+            "GRU": "/workspaces/FinalProj/GRU/actual_vs_pred_gru_without_reports.csv",
             "XGBoost": XGBOOST_CSV_PATH,
             "LightGBM": LIGHTGBM_CSV_PATH,
         }
