@@ -149,8 +149,8 @@ class StockDataHandler:
     def extract_forecasted_values(self, stock, last_predicted_date, actual_predicted: pd.DataFrame):
         
         forecast_paths = {
-            "LSTM": "/workspaces/FinalProj/LSTM/forecast_lstm.csv",
-            "GRU": "/workspaces/FinalProj/GRU/forecast_gru.csv",
+            "LSTM": "/workspaces/FinalProj/LSTM/forecast_lstm_without_reports.csv",
+            "GRU": "/workspaces/FinalProj/GRU/forecast_gru_without_reports.csv",
             "LightGBM": "/workspaces/FinalProj/LightGBM/LightGBM_forecast_stocks.csv",
             "XGBoost": "/workspaces/FinalProj/XGBoost/XGBoost_forecast_stocks.csv"
         }
