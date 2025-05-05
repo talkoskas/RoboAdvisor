@@ -3,6 +3,7 @@ from typing import List, Dict
 from spellchecker import SpellChecker
 from difflib import get_close_matches
 import string
+from Levenshtein import distance as levenshtein_distance
 
 class IntentDetector:
     def __init__(self, ticker_mapping: Dict[str, str], industry_mapping: Dict[str, str]):
@@ -11,7 +12,7 @@ class IntentDetector:
         self.company_names = list(ticker_mapping.keys())
         self.intent_keywords = {
             "industry_values": ["actual values", "industry", "companies in industry", "all"],
-            "compare": ["compare", "comparison", "difference between", "versus", "vs", "with", "and", "&", ","],
+            "compare": ["compare", "comparison", "between", "difference between", "versus", "vs", "with", "and", "&", ","],
             "graph": ["chart of", "plot of", "graph of", "graph", "plot", "visualize", "chart"]
         }
 
@@ -33,6 +34,14 @@ class IntentDetector:
 
     def spell_correct(self, word: str) -> str:
         return self.spell.correction(word.lower())
+    def suggest_closest_matches(self, input_name: str, candidates: List[str], n=3):
+        input_cleaned = self.clean_name(input_name)
+        suggestions = sorted(
+            candidates,
+            key=lambda x: levenshtein_distance(input_cleaned, self.clean_name(x))
+        )
+        return suggestions[:n]
+
 
     def fuzzy_contains_keyword(self, user_input: str, keyword_list: List[str]) -> str:
         words = user_input.lower().split()
@@ -45,27 +54,39 @@ class IntentDetector:
     def fuzzy_match_company(self, name: str) -> str:
         name = self.clean_name(name)
 
+        # All known names: company names + ticker symbols
+        all_names = list(set(self.company_names + list(self.ticker_mapping.values())))
 
-        # Step 1: Try fuzzy match from Excel Company Names
-        close_matches = get_close_matches(name, self.company_names, n=1, cutoff=0.8)
+        # 1. Direct fuzzy match
+        close_matches = get_close_matches(name, all_names, n=1, cutoff=0.8)
         if close_matches:
             return close_matches[0]
 
-        # Step 2: Fallback to SpellChecker
+        # 2. Try spelling correction, then fuzzy match again
         corrected = self.spell.correction(name.lower()).upper()
-        close_matches = get_close_matches(corrected, self.company_names, n=1, cutoff=0.8)
+        close_matches = get_close_matches(corrected, all_names, n=1, cutoff=0.8)
         if close_matches:
             return close_matches[0]
 
-        raise ValueError(f"Company '{name}' not found in mapping.")
+        # 3. Still not found → suggest closest matches and raise error
+        suggestions = self.suggest_closest_matches(name, self.company_names)
+        raise ValueError(f"Company '{name}' not found. Did you mean: {', '.join(suggestions)}?")
+
+
+
 
     def fuzzy_match_industry(self, name: str) -> str:
         name = self.clean_name(name)
-        name = self.spell_correct(name)
-        for industry in self.industry_mapping:
-            if name in industry.lower():
-                return self.industry_mapping[industry]
-        raise ValueError(f"Industry '{name}' not recognized.")
+        corrected = self.spell_correct(name)
+
+        for industry_key, canonical in self.industry_mapping.items():
+            if corrected in industry_key:
+                return canonical
+
+        # If not found, suggest alternatives
+        suggestions = self.suggest_closest_matches(corrected, list(self.industry_mapping.keys()))
+        raise ValueError(f"Industry '{name}' not recognized. Did you mean: {', '.join(suggestions)}?")
+
 
     def detect(self, user_input: str, last_intent: str = None) -> dict:
         user_input = self.normalize_text(user_input)
@@ -150,9 +171,17 @@ class IntentDetector:
             raise ValueError("At least two valid companies required.")
         return list(set(matched))
 
-    def resolve_ticker(self, user_input: str) -> str:
-        user_input = self.clean_name(user_input)
-        for company_name, ticker in self.ticker_mapping.items():
-            if user_input in company_name or user_input == ticker:
-                return ticker
-        raise ValueError(f"Ticker or company name '{user_input}' not found.")
+    def resolve_ticker(self, company_or_ticker: str) -> str:
+        key = company_or_ticker.strip().upper()
+
+        # Try company name → ticker
+        if key in self.ticker_mapping:
+            return self.ticker_mapping[key]
+
+        # Try ticker itself (reverse map)
+        reverse_map = {v: k for k, v in self.ticker_mapping.items()}
+        if key in reverse_map:
+            return key  # already a valid ticker
+
+        raise ValueError(f"Company or Ticker '{company_or_ticker}' not found in mapping.")
+
