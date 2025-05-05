@@ -151,8 +151,8 @@ class StockDataHandler:
         forecast_paths = {
             "LSTM": "/workspaces/FinalProj/LSTM/forecast_lstm_without_reports.csv",
             "GRU": "/workspaces/FinalProj/GRU/forecast_gru_without_reports.csv",
-            "LightGBM": "/workspaces/FinalProj/LightGBM/LightGBM_forecast_stocks.csv",
-            "XGBoost": "/workspaces/FinalProj/XGBoost/XGBoost_forecast_stocks.csv"
+            "LightGBM": "/workspaces/FinalProj/LightGBM/model_XGBoost_metrics_and_predictions_without_report_total.csv",
+            "XGBoost": "/workspaces/FinalProj/XGBoost/model_XGBoost_metrics_and_predictions_without_report_parameters.csv"
         }
         best_model_df = pd.read_csv(self.best_model_path, encoding='latin-1')
         model = best_model_df.loc[best_model_df["Company"] == stock, "Model"].values[0]
@@ -166,10 +166,25 @@ class StockDataHandler:
             df = df[df["Ticker"] == stock][["Date", "Forecast"]]
             df["Date"] = pd.to_datetime(df["Date"], dayfirst=True)
         else:
-            df = df[df["Ticker"] == stock][["Day", "Forecast"]]
-            df["Day"] = df["Day"].str.extract(r"Day_(\d+)").astype(int)
-            df["Date"] = [last_predicted_date + timedelta(days=int(x)) for x in df["Day"]]
-            df.drop(columns="Day", inplace=True)
+            df = df[df["Ticker"] == stock]
+            if df.empty:
+                raise ValueError(f"No forecast data found for stock: {stock}")
+        
+            # Extract forecast columns (e.g., Day_1, Day_2, ...)
+            forecast_cols = [col for col in df.columns if col.startswith("Day_")]
+        
+            # Reshape from wide to long
+            df_melted = df.melt(value_vars=forecast_cols, value_name="Forecast", var_name="Day")
+        
+            # Extract numeric day offset
+            df_melted["Day"] = df_melted["Day"].str.extract(r"Day_(\d+)").astype(int)
+        
+            # Generate actual forecast dates
+            df_melted["Date"] = [last_predicted_date + timedelta(days=int(x)) for x in df_melted["Day"]]
+        
+            # Finalize forecast DataFrame
+            df = df_melted[["Date", "Forecast"]].sort_values("Date").reset_index(drop=True)
+
 
         # Adjust forecast to start from last predicted value
         last_pred = actual_predicted.loc[actual_predicted["Date"] == last_predicted_date, "Predicted"].values[0]
