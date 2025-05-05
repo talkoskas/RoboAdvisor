@@ -36,18 +36,30 @@ class StockDataHandler:
 
 
     def _process_model_data(self, company_data, start_date):
-        company_data["y_test"] = ast.literal_eval((company_data["y_test"]))
-        company_data["y_pred"] = ast.literal_eval((company_data["y_pred"]))
+        company_data["y_test"] = ast.literal_eval(company_data["y_test"])
+        company_data["y_pred"] = ast.literal_eval(company_data["y_pred"])
 
-        actual_df = pd.DataFrame({
-            "Date": pd.date_range(start=start_date, periods=len(company_data["y_test"])),
-            "Actual": company_data["y_test"]
-        })
-        predicted_df = pd.DataFrame({
-            "Date": pd.date_range(start=start_date, periods=len(company_data["y_pred"])),
-            "Predicted": company_data["y_pred"]
-        })
+        fixed_start = pd.to_datetime("2024-07-04")
+        fixed_end = pd.to_datetime("2024-12-30")
+        total_days = (fixed_end - fixed_start).days + 1  # inclusive
+
+        # Truncate or pad values if necessary to fit range
+        y_test = company_data["y_test"][:total_days]
+        y_pred = company_data["y_pred"][:total_days]
+
+        if len(y_test) < total_days:
+            # pad with last value
+            y_test += [y_test[-1]] * (total_days - len(y_test))
+        if len(y_pred) < total_days:
+            y_pred += [y_pred[-1]] * (total_days - len(y_pred))
+
+        date_range = pd.date_range(start=fixed_start, end=fixed_end)
+
+        actual_df = pd.DataFrame({"Date": date_range, "Actual": y_test})
+        predicted_df = pd.DataFrame({"Date": date_range, "Predicted": y_pred})
+
         return pd.merge(actual_df, predicted_df, on="Date")
+
 
     def _load_arima_data(self, ticker, start_date, end_date):
         rev_map = {v: k for k, v in self.ticker_mapping.items()}
@@ -151,7 +163,7 @@ class StockDataHandler:
         forecast_paths = {
             "LSTM": "/workspaces/FinalProj/LSTM/forecast_lstm_without_reports.csv",
             "GRU": "/workspaces/FinalProj/GRU/forecast_gru_without_reports.csv",
-            "LightGBM": "/workspaces/FinalProj/LightGBM/model_XGBoost_metrics_and_predictions_without_report_total.csv",
+            "LightGBM": "/workspaces/FinalProj/LightGBM/model_LightGBM_metrics_and_predictions_total.csv",
             "XGBoost": "/workspaces/FinalProj/XGBoost/model_XGBoost_metrics_and_predictions_without_report_parameters.csv"
         }
         best_model_df = pd.read_csv(self.best_model_path, encoding='latin-1')
@@ -166,7 +178,7 @@ class StockDataHandler:
             df = df[df["Ticker"] == stock][["Date", "Forecast"]]
             df["Date"] = pd.to_datetime(df["Date"], dayfirst=True)
         else:
-            df = df[df["Ticker"] == stock]
+            df = df[df["Stock"] == stock]
             if df.empty:
                 raise ValueError(f"No forecast data found for stock: {stock}")
         
