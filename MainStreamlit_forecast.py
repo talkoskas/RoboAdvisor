@@ -1,6 +1,5 @@
 import streamlit as st
 from GraphDrawer import GraphDrawer
-import google.generativeai as genai
 import matplotlib.pyplot as plt
 from io import BytesIO
 import os
@@ -15,16 +14,15 @@ import warnings
 import time
 import emoji
 from copy import deepcopy
-from chatbot_engine import get_llm_instance
+from chatbot_engine import ChatbotEngine
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
+from langchain.tools.render import format_tool_to_openai_function
 from langchain_core.messages import AIMessage, HumanMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
 from intent_detector import IntentDetector
 from stock_data_handler import StockDataHandler
 from graph_generator import GraphGenerator
-from chatbot_engine import ChatbotEngine
 
 warnings.filterwarnings("ignore")
 
@@ -46,7 +44,6 @@ if "chat_history" not in st.session_state:
 class AppManager:
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY", API_KEY)
-        self.model = self.initialize_model()
         self.ticker_mapping = self.load_ticker_mapping()
         self.industry_mapping = self.load_industry_mapping()
         self.intent_detector = IntentDetector(self.ticker_mapping, self.industry_mapping)
@@ -67,28 +64,15 @@ class AppManager:
         self.graph_generator = GraphGenerator()
         self.engine = ChatbotEngine(self.data_handler, self.graph_generator, self.intent_detector)
 
-    def initialize_model(self):
-        genai.configure(api_key=self.api_key)
-        return ChatGoogleGenerativeAI(
-                    model="gemini-2.0-flash-lite",
-                    temperature=0.3,
-                    google_api_key=self.api_key
-                )
-
     def load_ticker_mapping(self) -> dict:
         df = pd.read_excel(MAPPING_FILE_PATH)
         return {row["CompanyName"].upper(): row["Ticker"].upper() for _, row in df.iterrows()}
+
     def load_industry_mapping(self) -> dict:
-        """
-        Loads industry names from the sectors CSV and creates a mapping from
-        cleaned variations to canonical industry names.
-        """
         df = pd.read_csv(SECTORS_DF_PATH)
         df = df.dropna(subset=["Industry"])
         canonical_industries = df["Industry"].unique()
-
         industry_mapping = {}
-
         for industry in canonical_industries:
             cleaned = (
                 str(industry).lower()
@@ -97,31 +81,30 @@ class AppManager:
                 .replace("_", " ")
                 .replace(",", " ")
             )
-            cleaned = " ".join(cleaned.split())  # normalize spaces
+            cleaned = " ".join(cleaned.split())
             industry_mapping[cleaned] = industry.strip()
-
         return industry_mapping
-
 
     def run(self):
         def get_clean_chat_history():
-                lines = []
-                for m in st.session_state.chat_history:
-                    if isinstance(m, HumanMessage):
-                        lines.append(f"User: {m.content}")
-                    elif isinstance(m, AIMessage):
-                        lines.append(f"Assistant: {m.content}")
-                    elif isinstance(m, dict):
-                        if m.get("role") == "assistant":
-                            if "deep_analysis" in m:
-                                lines.append(f"Assistant: {m['deep_analysis']}")
-                            elif "text" in m:
-                                lines.append(f"Assistant: {m['text']}")
-                        elif m.get("role") == "user" and "text" in m:
-                            lines.append(f"User: {m['text']}")
-                return "\n".join(lines)
+            lines = []
+            for m in st.session_state.chat_history:
+                if isinstance(m, HumanMessage):
+                    lines.append(f"User: {m.content}")
+                elif isinstance(m, AIMessage):
+                    lines.append(f"Assistant: {m.content}")
+                elif isinstance(m, dict):
+                    if m.get("role") == "assistant":
+                        if "deep_analysis" in m:
+                            lines.append(f"Assistant: {m['deep_analysis']}")
+                        elif "text" in m:
+                            lines.append(f"Assistant: {m['text']}")
+                    elif m.get("role") == "user" and "text" in m:
+                        lines.append(f"User: {m['text']}")
+            return "\n".join(lines)
+
         if "accepted_disclaimer" not in st.session_state:
-         st.session_state.accepted_disclaimer = False
+            st.session_state.accepted_disclaimer = False
 
         if not st.session_state.accepted_disclaimer:
             st.title("🤖 Welcome to the Robo Advisor – Israeli Stock Market")
@@ -184,15 +167,13 @@ class AppManager:
                 st.session_state.accepted_disclaimer = True
                 st.rerun()
 
-            return  # prevent chatbot from rendering
-
+            return
 
         st.set_page_config(page_title="Robo Advisor", layout="wide")
         st.title("🤖 Robo Advisor – Israeli Stock Market")
         st.sidebar.title("About")
         st.sidebar.info("This chatbot provides stock analysis using historical and forecasted data.")
 
-        # ✅ Always keep the button pills here (static location)
         default_prompts = [
             "show me the graph of leumi",
             "compare leumi and poalim",
@@ -205,7 +186,6 @@ class AppManager:
             if cols[i].button(p, use_container_width=True):
                 selected_prompt = p
 
-        # ✅ Show chat history below that
         for message in st.session_state.chat_history:
             if isinstance(message, HumanMessage):
                 with st.chat_message("user"):
@@ -223,7 +203,6 @@ class AppManager:
                 with st.chat_message("assistant"):
                     st.write(message.content)
 
-        # ✅ Always show chat input
         manual_input = st.chat_input("What would you like to know?")
         prompt = selected_prompt or manual_input
 
@@ -233,14 +212,13 @@ class AppManager:
             with st.chat_message("user"):
                 st.write(prompt)
 
-            # FIRST: Try intent-based response
             structured_response = self.engine.handle_input(prompt)
+
             if "text" in structured_response or "graphs" in structured_response:
                 with st.chat_message("assistant"):
-                    if "graphs" in structured_response:
-                        for graph in structured_response["graphs"]:
-                            st.plotly_chart(graph, use_container_width=True)
-                    if "text" in structured_response:
+                    for graph in structured_response.get("graphs", []):
+                        st.plotly_chart(graph, use_container_width=True)
+                    if structured_response.get("text"):
                         st.markdown(structured_response["text"])
 
                 st.session_state.chat_history.append({
@@ -248,94 +226,28 @@ class AppManager:
                     "text": structured_response.get("text", ""),
                     "graphs": structured_response.get("graphs", [])
                 })
-                    # Trigger deeper Gemini analysis AFTER initial summary is shown
+
                 if structured_response.get("intent") in ["graph", "compare", "industry_values"]:
+                    st.session_state["deep_analysis_pending"] = {
+                        "summary": structured_response["text"],
+                        "context": f"{structured_response.get('intent').capitalize()} Analysis"
+                    }
+                # 🔄 Handle delayed deep analysis rendering
+                if "deep_analysis_pending" in st.session_state:
                     with st.spinner("🔍 Generating deeper AI insights..."):
-
-                        # Format graph summary if available
-                        def summarize_graphs(graphs):
-                            if not graphs:
-                                return ""
-                            return f"({len(graphs)} interactive visualizations attached – actual, predicted, forecasted trends shown per request.)"
-
-                        # Final Gemini input = textual + context from graphs
-                        prompt_context = summarize_graphs(structured_response.get("graphs", []))
-                        final_summary = f"{structured_response['text']}\n\nContext:\n{prompt_context}"
-
-                        deep_prompt = ChatPromptTemplate.from_template(
-                            """You are a financial analyst. Based on the summary below, write a deeper analysis, up to 300 words.
-                Summarize key insights, trends, anomalies, and possible conclusions for a beginner audience.
-
-                {summary}. at the end, add a disclaimer"""
-                        )
-
-                        deep_chain = deep_prompt | get_llm_instance() | StrOutputParser()
-                        deep_analysis = deep_chain.invoke({"summary": final_summary})
-
-                    with st.chat_message("assistant"):
-                        st.markdown("### 🔍 Deeper Analysis")
-                        st.markdown(deep_analysis)
-                    st.session_state.chat_history.append({
-                    "role": "assistant",
-                    "deep_analysis": deep_analysis
-                })
+                        pending = st.session_state.pop("deep_analysis_pending")
+                        deep_result = self.engine._generate_deeper_analysis(pending["summary"], context_info=pending["context"])
+                        with st.chat_message("assistant"):
+                            st.markdown("### 🔍 Deeper Analysis")
+                            st.markdown(deep_result)
+                        st.session_state.chat_history.append({
+                            "role": "assistant",
+                            "deep_analysis": deep_result
+                        })
 
 
-
-                return  # ✅ End here if intent handled
-
-            # SECOND: fallback to Gemini via LangChain
-            conversation_history = "\n".join([
-                f"User: {m.content}" if isinstance(m, HumanMessage)
-                else f"Assistant: {m.content}" if isinstance(m, AIMessage)
-                else f"Assistant: {m.get('text', '')}" if isinstance(m, dict) and m.get("role") == "assistant"
-                else ""
-                for m in get_clean_chat_history()
-            ])
-
-            
-            def get_response(user_query, conversation_history):
-                prompt = f"""The following is a conversation between a user and an AI stock assistant. The assistant should remember and refer back to previous facts, including names. Use the context to generate a helpful response.
-
-                {conversation_history}
-
-                User: {user_query}
-                Assistant:"""
-                prompt = ChatPromptTemplate.from_template(prompt)
-                print("prompt:", prompt)
-                llm = ChatGoogleGenerativeAI(
-                    model="gemini-2.0-flash-lite",
-                    temperature=0.3,
-                    google_api_key=self.api_key,
-                    stream=True
-                )
-                chain = prompt | llm | StrOutputParser()
-                return chain.stream({
-                    "conversation_history": conversation_history,
-                    "user_query": user_query
-                })
-
-            # Stream Gemini response
-            stream = get_response(prompt, conversation_history)
-            print("stream:",stream)
-
-            with st.chat_message("assistant"):
-                message_placeholder = st.empty()  # Reserve a spot for streamed text
-                full_response = ""
-
-                for chunk in stream:
-                    full_response += chunk
-                    message_placeholder.markdown(full_response + "▌")  # Typing cursor effect
-
-                message_placeholder.markdown(full_response)  # Final clean output
-
-            # ✅ Save Gemini response correctly to history
-            st.session_state.chat_history.append(AIMessage(content=full_response))
-
-
-
+                return
 
 if __name__ == "__main__":
     app = AppManager()
     app.run()
-
