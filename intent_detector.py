@@ -90,48 +90,36 @@ class IntentDetector:
 
     def detect(self, user_input: str, last_intent: str = None) -> dict:
         user_input = self.normalize_text(user_input)
-        # 🔁 1. Handle 'add <company>'
-        if user_input.startswith("add "):
-            name = self.clean_name(user_input.replace("add ", ""))
-            return {"intent": "compare", "add_company": self.fuzzy_match_company(name)}
+        words = [self.clean_name(w) for w in user_input.split()]
 
-        # 🔁 2. Handle 'compare with <company>'
-        if user_input.startswith("compare with "):
-            name = self.clean_name(user_input.replace("compare with ", ""))
-            try:
-                return {"intent": "compare", "add_company": self.fuzzy_match_company(name)}
-            except:
-                return {"intent": "sector_comparison", "add_industry": self.fuzzy_match_industry(name)}
+        matched_companies = [name for name in words if name in self.company_names]
+        matched_tickers = [t for t in words if t in self.ticker_mapping.values()]
+        matched_industries = [ind for ind in words if ind in self.industry_mapping.keys()]
+
+        total_companies = list(set(matched_companies + [
+            k for k, v in self.ticker_mapping.items() if v in matched_tickers
+        ]))
+
+        # 🔷 Intent by matches
+        if len(total_companies) >= 2:
+            return {"intent": "compare", "companies": total_companies}
+        elif len(total_companies) == 1:
+            return {"intent": "graph", "company": total_companies[0]}
+        elif len(matched_industries) >= 2:
+            return {"intent": "sector_comparison", "industries": matched_industries}
+        elif len(matched_industries) == 1:
+            return {"intent": "industry_values", "industry": matched_industries[0]}
+
+        # ⬇️ Fallback to keywords if nothing matched
         if self.fuzzy_contains_keyword(user_input, self.intent_keywords["industry_values"]):
-            industry_name = self.extract_industry_name(user_input)
-            return {"intent": "industry_values", "industry": industry_name}
-
+            return {"intent": "industry_values", "industry": self.extract_industry_name(user_input)}
         if self.fuzzy_contains_keyword(user_input, self.intent_keywords["compare"]):
             return {"intent": "compare", "companies": self.extract_company_names(user_input)}
-
         if self.fuzzy_contains_keyword(user_input, self.intent_keywords["graph"]):
-            if self.fuzzy_contains_keyword(user_input, self.intent_keywords["compare"]):
-                return {"intent": "compare", "companies": self.extract_company_names(user_input)}
             return {"intent": "graph", "company": self.extract_company_name(user_input)}
 
-        # ⬇️ New: fallback to last intent
-        if last_intent == "graph":
-            try:
-                return {"intent": "graph", "company": self.extract_company_name(user_input)}
-            except:
-                pass
-        if last_intent == "compare":
-            try:
-                return {"intent": "compare", "companies": self.extract_company_names(user_input)}
-            except:
-                pass
-        if last_intent == "industry_values":
-            try:
-                return {"intent": "industry_values", "industry": self.extract_industry_name(user_input)}
-            except:
-                pass
-
         return {"intent": "text"}
+
 
 
     def extract_industry_name(self, user_input: str) -> str:
