@@ -25,7 +25,6 @@ BEST_MODEL_CSV = "/workspaces/FinalProj/Metrics/without_ARIMA_model_to_stock.csv
 SECTORS_DF_PATH = "sectors_df.csv"
 comp_text = pd.read_excel(MAPPING_FILE_PATH).to_markdown(index=False)
 sectors_text = pd.read_csv(SECTORS_DF_PATH)[["Industry"]].to_markdown(index=False)
-
 def get_llm_instance(tools=None):
     return ChatGoogleGenerativeAI(
         model="gemini-2.0-flash-lite",
@@ -241,7 +240,6 @@ class ChatbotEngine:
             return {"text": response.content, "intent": "fallback", "raw_input": user_input}
 
         except Exception as e:
-            print(e)
             user_words = user_input.upper().split()
             all_companies = list(self.intent_detector.ticker_mapping.keys())
             all_tickers = list(self.intent_detector.ticker_mapping.values())
@@ -410,38 +408,51 @@ class ChatbotEngine:
         start_date = datetime(2024, 1, 1)
         end_date = datetime(2025, 3, 13)
 
-        industry_avg_frames = []
+        actual_frames, predicted_frames, forecasted_frames = [], [], []
         summaries = []
 
         for industry in industries:
-            actual_df = self.data_handler.get_industry_actuals(industry, start_date, end_date)
-            if actual_df.empty:
+            full_df = self.data_handler.extract_by_industry(industry, start_date, end_date)
+
+            if full_df.empty:
                 continue
 
-            avg_df = actual_df.groupby("Date")["Actual"].mean().reset_index()
-            avg_df["Industry"] = industry
-            industry_avg_frames.append(avg_df)
+            actual = full_df.dropna(subset=["Actual"])
+            predicted = full_df.dropna(subset=["Predicted"])
+            forecasted = full_df.dropna(subset=["Forecast"])
 
-            # Basic summary per sector
-            first = avg_df["Actual"].iloc[0]
-            last = avg_df["Actual"].iloc[-1]
-            trend = "upward 📈" if last > first else "downward 📉"
-            summaries.append(f"- {industry}: Start={first:.2f}, End={last:.2f}, Trend={trend}")
+            for df, label in zip([actual, predicted, forecasted], ["Actual", "Predicted", "Forecast"]):
+                df = df.copy()
+                df["Industry"] = industry
+                grouped = df.groupby("Date")[label].mean().reset_index()
+                grouped["Type"] = label
 
-        if not industry_avg_frames:
+                if label == "Actual":
+                    actual_frames.append(grouped)
+                elif label == "Predicted":
+                    predicted_frames.append(grouped)
+                elif label == "Forecast":
+                    forecasted_frames.append(grouped)
+
+            # Basic summary per industry
+            start_val = actual[label].iloc[0]
+            end_val = actual[label].iloc[-1]
+            trend = "upward 📈" if end_val > start_val else "downward 📉"
+            summaries.append(f"- {industry}: Start={start_val:.2f}, End={end_val:.2f}, Trend={trend}")
+
+        if not actual_frames:
             return {"text": "No data found for the selected industries."}
 
-        combined_df = pd.concat(industry_avg_frames)
-        fig = self.graph_generator.generate_sector_comparison_graph(combined_df)
+        fig_actual = self.graph_generator.generate_sector_comparison_graph(pd.concat(actual_frames), label="Actual")
+        fig_predicted = self.graph_generator.generate_sector_comparison_graph(pd.concat(predicted_frames), label="Predicted")
+        fig_forecast = self.graph_generator.generate_sector_comparison_graph(pd.concat(forecasted_frames), label="Forecast")
 
         summary_text = f"📊 Sector comparison between industries:\n\n" + "\n".join(summaries)
-
-        # 🔍 Generate deeper analysis using Gemini
         deep_analysis = self._generate_deeper_analysis(summary_text, context_info="Sector Comparison")
 
         return {
             "text": summary_text + "\n\n🔍 **Deeper Analysis**\n\n" + deep_analysis,
-            "graphs": [fig]
+            "graphs": [fig_actual, fig_predicted, fig_forecast]
         }
 
 
