@@ -76,25 +76,37 @@ class IntentDetector:
 
 
     def fuzzy_match_industry(self, name: str) -> str:
-        name = self.clean_name(name)
-        corrected = self.spell_correct(name)
+        name = name.lower().strip()
+        name = re.sub(r"[-_:,&]", " ", name)
+        name = re.sub(r"\s+", " ", name).strip()
+
 
         for industry_key, canonical in self.industry_mapping.items():
-            if corrected in industry_key:
+            if name in industry_key:
                 return canonical
 
         # If not found, suggest alternatives
-        suggestions = self.suggest_closest_matches(corrected, list(self.industry_mapping.keys()))
+        suggestions = self.suggest_closest_matches(name, list(self.industry_mapping.keys()))
+        print(f"[DEBUG] Cleaned industry input: '{name}'")
+        print(f"[DEBUG] Known industries: {list(self.industry_mapping.keys())[:5]} ...")
         raise ValueError(f"Industry '{name}' not recognized. Did you mean: {', '.join(suggestions)}?")
 
 
     def detect(self, user_input: str, last_intent: str = None) -> dict:
         user_input = self.normalize_text(user_input)
         words = [self.clean_name(w) for w in user_input.split()]
+        print(words)
 
         matched_companies = [name for name in words if name in self.company_names]
         matched_tickers = [t for t in words if t in self.ticker_mapping.values()]
-        matched_industries = [ind for ind in words if ind in self.industry_mapping.keys()]
+        # 🔧 Try matching full industry names based on substrings in the input
+        normalized_input = user_input.lower()
+
+        matched_industries = [
+            key for key in self.industry_mapping.keys()
+            if key in user_input
+        ]
+
 
         total_companies = list(set(matched_companies + [
             k for k, v in self.ticker_mapping.items() if v in matched_tickers
