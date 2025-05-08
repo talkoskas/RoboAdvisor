@@ -193,7 +193,7 @@ class AppManager:
             elif isinstance(message, dict) and message.get("role") == "assistant":
                 with st.chat_message("assistant"):
                     for graph in message.get("graphs", []):
-                        st.plotly_chart(graph, use_container_width=True)
+                        st.plotly_chart(graph, use_container_width=True, key=str(id(graph)))
                     if message.get("text"):
                         st.markdown(message["text"])
                     if message.get("deep_analysis"):
@@ -217,7 +217,7 @@ class AppManager:
             if "text" in structured_response or "graphs" in structured_response:
                 with st.chat_message("assistant"):
                     for graph in structured_response.get("graphs", []):
-                        st.plotly_chart(graph, use_container_width=True)
+                        st.plotly_chart(graph, use_container_width=True, key=str(id(graph)))
                     if structured_response.get("text"):
                         st.markdown(structured_response["text"])
 
