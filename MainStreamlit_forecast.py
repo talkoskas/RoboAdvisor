@@ -145,7 +145,7 @@ class AppManager:
 
         - 🟢 `show me the graph of leumi`
         - 🟢 `compare leumi and poalim`
-        - 🟢 `show me all companies in industry Banks - Regional`
+        - 🟢 `show me all companies in industry Banks`
 
         The app will detect your intent and generate relevant insights and visuals.
         """)
@@ -177,7 +177,7 @@ class AppManager:
         default_prompts = [
             "show me the graph of leumi",
             "compare leumi and poalim",
-            "show me all companies in industry Banks - Regional"
+            "show me all companies in industry Banks"
         ]
 
         cols = st.columns(len(default_prompts))
