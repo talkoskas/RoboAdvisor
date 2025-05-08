@@ -2,6 +2,7 @@ import re
 from typing import List, Dict
 from spellchecker import SpellChecker
 from difflib import get_close_matches
+import streamlit as st
 import string
 from Levenshtein import distance as levenshtein_distance
 
@@ -97,32 +98,73 @@ class IntentDetector:
         words = [self.clean_name(w) for w in user_input.split()]
         print(words)
 
+        # 🔍 Additive phrasing logic
+        additive_keywords = {
+            "add", "also", "compare", "with", "vs", "versus", "too", "as well",
+            "along", "plus", "include", "including", "alongside", "next to", "and",
+            "another", "more", "combine", "in addition"
+        }
+        normalized_input = user_input.lower()
+        is_additive = any(kw in normalized_input for kw in additive_keywords)
+        prev_intent = last_intent
+
         matched_companies = [name for name in words if name in self.company_names]
         matched_tickers = [t for t in words if t in self.ticker_mapping.values()]
-        # 🔧 Try matching full industry names based on substrings in the input
-        normalized_input = user_input.lower()
-
         matched_industries = [
             key for key in self.industry_mapping.keys()
-            if key in user_input
+            if key in normalized_input
         ]
-
 
         total_companies = list(set(matched_companies + [
             k for k, v in self.ticker_mapping.items() if v in matched_tickers
         ]))
 
-        # 🔷 Intent by matches
+        # 🧠 Contextual expansion logic: companies
+        if prev_intent in {"graph", "compare"} and is_additive:
+            prev_company = st.session_state.get("last_company")
+            if prev_company and prev_company not in total_companies:
+                total_companies.append(prev_company)
+
+            prev_companies = st.session_state.get("last_companies", [])
+            for pc in prev_companies:
+                if pc not in total_companies:
+                    total_companies.append(pc)
+
+            if len(total_companies) >= 2:
+                st.session_state.last_companies = total_companies
+                return {"intent": "compare", "companies": list(set(total_companies))}
+
+        # 🧠 Contextual expansion logic: industries
+        if prev_intent in {"industry_values", "sector_comparison"} and is_additive:
+            prev_industry = st.session_state.get("last_industry")
+            if prev_industry and prev_industry not in matched_industries:
+                matched_industries.append(prev_industry)
+
+            prev_industries = st.session_state.get("last_industries", [])
+            for pi in prev_industries:
+                if pi not in matched_industries:
+                    matched_industries.append(pi)
+
+            if len(matched_industries) >= 2:
+                st.session_state.last_industries = matched_industries  # ✅ store updated set
+                return {"intent": "sector_comparison", "industries": list(set(matched_industries))}
+
+
+        # 🔷 Primary intent logic
         if len(total_companies) >= 2:
+            st.session_state.last_companies = total_companies
             return {"intent": "compare", "companies": total_companies}
         elif len(total_companies) == 1:
+            st.session_state.last_company = total_companies[0]
             return {"intent": "graph", "company": total_companies[0]}
         elif len(matched_industries) >= 2:
+            st.session_state.last_industries = matched_industries
             return {"intent": "sector_comparison", "industries": matched_industries}
         elif len(matched_industries) == 1:
+            st.session_state.last_industry = matched_industries[0]
             return {"intent": "industry_values", "industry": matched_industries[0]}
 
-        # ⬇️ Fallback to keywords if nothing matched
+        # ⬇️ Fallback to fuzzy keywords
         if self.fuzzy_contains_keyword(user_input, self.intent_keywords["industry_values"]):
             return {"intent": "industry_values", "industry": self.extract_industry_name(user_input)}
         if self.fuzzy_contains_keyword(user_input, self.intent_keywords["compare"]):
@@ -131,6 +173,8 @@ class IntentDetector:
             return {"intent": "graph", "company": self.extract_company_name(user_input)}
 
         return {"intent": "text"}
+
+
 
 
 
