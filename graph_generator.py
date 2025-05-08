@@ -112,18 +112,18 @@ class GraphGenerator:
         fig.update_xaxes(tickformat='%Y-%m', tickangle=45)
         fig.update_yaxes(showgrid=True)
         return self.customize(fig)
-    def generate_sector_comparison_graph(self, df: pd.DataFrame):
-
+    def generate_sector_comparison_graph(self, df: pd.DataFrame, label: str = "Actual"):
         fig = px.line(
             df,
             x="Date",
-            y="Actual",
+            y=label,
             color="Industry",
-            title="Sector Average Comparison",
-            labels={"Actual": "Average Actual Value"}
+            title=f"Sector Average Comparison – {label}",
+            labels={label: f"Average {label} Value"}
         )
         fig.update_layout(legend_title="Industry", plot_bgcolor="#fdf6e3")
         return fig
+
 
 
     def customize(self, fig):
