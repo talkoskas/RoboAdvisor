@@ -61,42 +61,37 @@ class StockDataHandler:
         return pd.merge(actual_df, predicted_df, on="Date")
 
 
-    def _load_arima_data(self, ticker, start_date, end_date):
-        rev_map = {v: k for k, v in self.ticker_mapping.items()}
-        stripped_ticker = ticker.replace(".TA", "")
-        company_name = rev_map.get(stripped_ticker)
+    def extract_by_industry(self, industry, start_date, end_date):
+        df = pd.read_csv(self.sector_path)
+        best_models = pd.read_csv(self.best_model_path)
+        reverse_map = {v: k for k, v in self.ticker_mapping.items()}
 
-        if not company_name:
-            raise ValueError(f"No company name found for {ticker}")
+        df.rename(columns={"Symbol": "Ticker"}, inplace=True)
+        industry_companies = df[df["Industry"].str.lower() == industry.lower()]
+        tickers = industry_companies["Ticker"].tolist()
 
-        normalized_name = company_name.strip().upper()
-        actual_path = f"/workspaces/FinalProj/ARIMA/Actuals/{normalized_name}_actuals.pkl"
-        predicted_path = f"/workspaces/FinalProj/ARIMA/Predictions/{normalized_name}_predictions.pkl"
+        result = []
 
-        if not os.path.exists(actual_path) or not os.path.exists(predicted_path):
-            raise FileNotFoundError(f"Missing ARIMA files for {normalized_name}")
+        for t in tickers:
+            full_ticker = f"{t}.TA"
+            try:
+                model = best_models.loc[best_models["Company"] == full_ticker, "Model"].values[0]
+                ap_df = self.extract_by_model(full_ticker, model, start_date, end_date)
+                if ap_df.empty:
+                    continue
 
-        with open(actual_path, "rb") as f:
-            actual = pickle.load(f)
-        with open(predicted_path, "rb") as f:
-            predicted = pickle.load(f)
+                last_date = ap_df["Date"].max()
+                forecast_df = self.extract_forecasted_values(full_ticker, last_date, ap_df)
 
-        if isinstance(actual, np.ndarray):
-            actual = pd.Series(actual, name="Actual")
-        if isinstance(predicted, np.ndarray):
-            predicted = pd.Series(predicted, name="Predicted")
+                merged = pd.merge(ap_df, forecast_df, on="Date", how="outer")
+                merged["Ticker"] = full_ticker
+                merged["Industry"] = industry
+                result.append(merged)
+            except Exception as e:
+                continue
 
-        if not isinstance(actual.index, pd.DatetimeIndex):
-            actual.index = pd.date_range(start=start_date, periods=len(actual))
-        if not isinstance(predicted.index, pd.DatetimeIndex):
-            predicted.index = pd.date_range(start=start_date, periods=len(predicted))
+        return pd.concat(result, ignore_index=True) if result else pd.DataFrame()
 
-        df_actual = pd.DataFrame({"Date": actual.index, "Actual": actual.values})
-        df_pred = pd.DataFrame({"Date": predicted.index, "Predicted": predicted.values})
-
-        merged = pd.merge(df_actual, df_pred, on="Date")
-        merged["Date"] = pd.to_datetime(merged["Date"], dayfirst=True)
-        return merged[(merged["Date"] >= start_date) & (merged["Date"] <= end_date)]
 
     def get_industry_actuals(self, industry, start_date, end_date):
         df = pd.read_csv(self.sector_path)
