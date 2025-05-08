@@ -9,7 +9,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_google_genai import ChatGoogleGenerativeAI, HarmCategory, HarmBlockThreshold
 from langchain.tools.render import format_tool_to_openai_function
-
+from functools import reduce
 from Levenshtein import distance as levenshtein_distance
 
 
@@ -37,6 +37,9 @@ def get_llm_instance(tools=None):
             HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE
         }
     )
+def get_common_dates(frames):
+    date_sets = [set(df["Date"]) for df in frames if not df.empty]
+    return sorted(set.intersection(*date_sets)) if date_sets else []
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
@@ -174,6 +177,8 @@ class ChatbotEngine:
         self.intent_detector = intent_detector
 
     def handle_input(self, user_input: str):
+        if "chat_history" not in st.session_state:
+            st.session_state.chat_history = []
         try:
             # ✅ Retry flow for user accepting a correction
             if user_input.strip().lower() == "yes" and "suggested_correction" in st.session_state:
@@ -194,9 +199,13 @@ class ChatbotEngine:
 
             # ✅ FIRST: Try IntentDetector logic
             try:
-                detected = self.intent_detector.detect(user_input, last_intent=st.session_state.get("last_intent"))
+                # Load last intent before detection
+                prev_intent = st.session_state.get("last_intent", None)
+                # Detect intent
+                detected = self.intent_detector.detect(user_input, last_intent=prev_intent)
                 intent = detected.get("intent")
-                st.session_state.last_intent = intent
+                # Update immediately, even before branching
+                st.session_state["last_intent"] = intent
 
                 if intent == "graph":
                     result = self._handle_graph_intent({"company": detected["company"]})
@@ -223,6 +232,8 @@ class ChatbotEngine:
                     return result
 
                 elif intent == "sector_comparison":
+                    st.session_state.last_industries = detected["industries"]
+                    print(self._handle_sector_comparison_intent(detected["industries"]))
                     return self._handle_sector_comparison_intent(detected["industries"])  # Already includes deep analysis
 
             except Exception as e:
@@ -240,6 +251,7 @@ class ChatbotEngine:
             return {"text": response.content, "intent": "fallback", "raw_input": user_input}
 
         except Exception as e:
+            print(e)
             user_words = user_input.upper().split()
             all_companies = list(self.intent_detector.ticker_mapping.keys())
             all_tickers = list(self.intent_detector.ticker_mapping.values())
@@ -405,47 +417,80 @@ class ChatbotEngine:
         summary = self._generate_comparison_summary(summaries)
         return {"text": summary, "graphs": [fig]}
     def _handle_sector_comparison_intent(self, industries):
+
         start_date = datetime(2024, 1, 1)
         end_date = datetime(2025, 3, 13)
 
         actual_frames, predicted_frames, forecasted_frames = [], [], []
-        summaries = []
+
+        def get_common_dates(frames):
+            if not frames:
+                return []
+            date_sets = [set(f["Date"]) for f in frames]
+            return sorted(reduce(set.intersection, date_sets))
 
         for industry in industries:
+            print(industry)
             full_df = self.data_handler.extract_by_industry(industry, start_date, end_date)
-
             if full_df.empty:
                 continue
 
             actual = full_df.dropna(subset=["Actual"])
             predicted = full_df.dropna(subset=["Predicted"])
-            forecasted = full_df.dropna(subset=["Forecast"])
+            forecasted = full_df.dropna(subset=["Forecasted"])
 
-            for df, label in zip([actual, predicted, forecasted], ["Actual", "Predicted", "Forecast"]):
+            for df, label in zip([actual, predicted, forecasted], ["Actual", "Predicted", "Forecasted"]):
                 df = df.copy()
                 df["Industry"] = industry
                 grouped = df.groupby("Date")[label].mean().reset_index()
                 grouped["Type"] = label
+                grouped["Industry"] = industry
 
                 if label == "Actual":
                     actual_frames.append(grouped)
                 elif label == "Predicted":
                     predicted_frames.append(grouped)
-                elif label == "Forecast":
+                elif label == "Forecasted":
                     forecasted_frames.append(grouped)
 
-            # Basic summary per industry
-            start_val = actual[label].iloc[0]
-            end_val = actual[label].iloc[-1]
-            trend = "upward 📈" if end_val > start_val else "downward 📉"
-            summaries.append(f"- {industry}: Start={start_val:.2f}, End={end_val:.2f}, Trend={trend}")
+        # ⬇️ Filter by common dates
+        common_actual_dates = get_common_dates(actual_frames)
+        common_predicted_dates = get_common_dates(predicted_frames)
+        common_forecasted_dates = get_common_dates(forecasted_frames)
 
-        if not actual_frames:
+        actual_df = pd.concat(actual_frames)
+        predicted_df = pd.concat(predicted_frames)
+        forecasted_df = pd.concat(forecasted_frames)
+
+        actual_df = actual_df[actual_df["Date"].isin(common_actual_dates)]
+        predicted_df = predicted_df[predicted_df["Date"].isin(common_predicted_dates)]
+        forecasted_df = forecasted_df[forecasted_df["Date"].isin(common_forecasted_dates)]
+
+        # ✅ Now summarize each industry based on filtered actual_df
+        summaries = []
+        for industry in industries:
+            industry_df = actual_df[actual_df["Industry"] == industry].dropna(subset=["Actual"])
+            if industry_df.empty:
+                continue
+            start_date = industry_df["Date"].iloc[0].strftime("%Y-%m-%d")
+            end_date = industry_df["Date"].iloc[-1].strftime("%Y-%m-%d")
+            start_val = industry_df["Actual"].iloc[0]
+            end_val = industry_df["Actual"].iloc[-1]
+            mean_val = industry_df["Actual"].mean()
+            trend = "upward 📈" if end_val > start_val else "downward 📉"
+            increase_rate = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0
+            summaries.append(
+                f"- {industry}: Start={start_val:.2f} on {start_date}, End={end_val:.2f} on {end_date}, "
+                f"Mean={mean_val:.2f}, Increase={increase_rate:.2f}%, Trend={trend}"
+            )
+
+        if actual_df.empty:
             return {"text": "No data found for the selected industries."}
 
-        fig_actual = self.graph_generator.generate_sector_comparison_graph(pd.concat(actual_frames), label="Actual")
-        fig_predicted = self.graph_generator.generate_sector_comparison_graph(pd.concat(predicted_frames), label="Predicted")
-        fig_forecast = self.graph_generator.generate_sector_comparison_graph(pd.concat(forecasted_frames), label="Forecast")
+        # ⬇️ Generate filtered graphs
+        fig_actual = self.graph_generator.generate_sector_comparison_graph(actual_df, label="Actual")
+        fig_predicted = self.graph_generator.generate_sector_comparison_graph(predicted_df, label="Predicted")
+        fig_forecast = self.graph_generator.generate_sector_comparison_graph(forecasted_df, label="Forecasted")
 
         summary_text = f"📊 Sector comparison between industries:\n\n" + "\n".join(summaries)
         deep_analysis = self._generate_deeper_analysis(summary_text, context_info="Sector Comparison")
@@ -457,15 +502,24 @@ class ChatbotEngine:
 
 
 
+
     def _generate_industry_summary(self, actual_df, predicted_df, forecast_df, name_map, industry):
         def summarize(df, col):
             summary = []
             for ticker in df["Ticker"].unique():
-                sub = df[df["Ticker"] == ticker]
+                sub = df[df["Ticker"] == ticker].dropna(subset=[col])
+                if sub.empty:
+                    continue
                 company = name_map.get(ticker.replace(".TA", ""), ticker)
+                start_val = sub[col].iloc[0]
+                end_val = sub[col].iloc[-1]
                 min_, max_, mean_ = sub[col].min(), sub[col].max(), sub[col].mean()
-                trend = "upward" if sub[col].iloc[-1] > sub[col].iloc[0] else "downward"
-                summary.append(f"- {company}: Min={min_:.2f}, Max={max_:.2f}, Mean={mean_:.2f}, Trend={trend}")
+                increase_rate = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0
+                trend = "upward 📈" if end_val > start_val else "downward 📉"
+                summary.append(
+                    f"- {company}: Min={min_:.2f}, Max={max_:.2f}, Mean={mean_:.2f}, "
+                    f"Increase={increase_rate:.2f}%, Trend={trend}"
+                )
             return "\n".join(summary)
 
         return (
@@ -475,30 +529,33 @@ class ChatbotEngine:
             f"**Forecasts:**\n{summarize(forecast_df, 'Forecasted')}"
         )
 
+
     def _generate_single_stock_summary(self, company, data, forecast_df, model):
-        def stats(col):
+        def stats(col, df):
+            start_val = df[col].iloc[0]
+            end_val = df[col].iloc[-1]
             return {
-                "min": data[col].min(),
-                "max": data[col].max(),
-                "mean": data[col].mean(),
-                "trend": "upward" if data[col].iloc[-1] > data[col].iloc[0] else "downward"
+                "min": df[col].min(),
+                "max": df[col].max(),
+                "mean": df[col].mean(),
+                "trend": "upward" if end_val > start_val else "downward",
+                "increase_rate": ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0
             }
 
-        actual = stats("Actual")
-        predicted = stats("Predicted")
-        forecast = {
-            "min": forecast_df["Forecasted"].min(),
-            "max": forecast_df["Forecasted"].max(),
-            "mean": forecast_df["Forecasted"].mean(),
-            "trend": "upward" if forecast_df["Forecasted"].iloc[-1] > forecast_df["Forecasted"].iloc[0] else "downward"
-        }
+        actual = stats("Actual", data)
+        predicted = stats("Predicted", data)
+        forecast = stats("Forecasted", forecast_df)
 
         return (
             f"📈 Stock analysis for {company} using model: **{model}**\n"
-            f"- Actual: Min={actual['min']:.2f}, Max={actual['max']:.2f}, Mean={actual['mean']:.2f}, Trend={actual['trend']}\n"
-            f"- Predicted: Min={predicted['min']:.2f}, Max={predicted['max']:.2f}, Mean={predicted['mean']:.2f}, Trend={predicted['trend']}\n"
-            f"- Forecasted: Min={forecast['min']:.2f}, Max={forecast['max']:.2f}, Mean={forecast['mean']:.2f}, Trend={forecast['trend']}"
+            f"- Actual: Min={actual['min']:.2f}, Max={actual['max']:.2f}, Mean={actual['mean']:.2f}, "
+            f"Increase={actual['increase_rate']:.2f}%, Trend={actual['trend']}\n"
+            f"- Predicted: Min={predicted['min']:.2f}, Max={predicted['max']:.2f}, Mean={predicted['mean']:.2f}, "
+            f"Increase={predicted['increase_rate']:.2f}%, Trend={predicted['trend']}\n"
+            f"- Forecasted: Min={forecast['min']:.2f}, Max={forecast['max']:.2f}, Mean={forecast['mean']:.2f}, "
+            f"Increase={forecast['increase_rate']:.2f}%, Trend={forecast['trend']}"
         )
+
 
     def _generate_comparison_summary(self, summaries):
         return "📊 Comparison Summary:\n\n" + "\n\n".join(summaries)
