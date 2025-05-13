@@ -179,6 +179,21 @@ class ChatbotEngine:
     def handle_input(self, user_input: str):
         if "chat_history" not in st.session_state:
             st.session_state.chat_history = []
+        def clean_chat_history():
+            def convert(m):
+                if isinstance(m, (HumanMessage, AIMessage)):
+                    return m
+                if isinstance(m, dict):
+                    if m.get("role") == "user" and "text" in m:
+                        return HumanMessage(content=m["text"])
+                    if m.get("role") == "assistant" and "text" in m:
+                        return AIMessage(content=m["text"])
+                    if m.get("role") == "assistant" and "content" in m:
+                        return AIMessage(content=m["content"])
+                return None
+
+            return [msg for msg in (convert(m) for m in st.session_state.chat_history) if msg]
+
         try:
             # ✅ Retry flow for user accepting a correction
             if user_input.strip().lower() == "yes" and "suggested_correction" in st.session_state:
@@ -240,10 +255,10 @@ class ChatbotEngine:
                 pass  # fallback to Gemini
 
             # 🤖 Gemini LLM fallback with tool-calling
-            response = self.llm.invoke(self.prompt.format_prompt(user_query=user_input).to_messages())
-
-            st.session_state.chat_history.append(HumanMessage(content=user_input))
-            st.session_state.chat_history.append(AIMessage(content=response.content))
+            cleaned_history = clean_chat_history()
+            print(cleaned_history)
+            messages = self.prompt.format_prompt(user_query=user_input, chat_history=cleaned_history).to_messages()
+            response = self.llm.invoke(messages)
 
             if response.tool_calls:
                 return self._handle_tool_call(response)
@@ -273,6 +288,19 @@ class ChatbotEngine:
 
             last_word = user_words[-1]
             all_names = all_companies + all_tickers + all_industries
+            # 🧠 Only activate fuzzy correction if user input is likely about stocks/sectors
+            is_stock_related = any(w in all_names for w in user_words)
+            if not is_stock_related:
+                # Let Gemini handle general queries
+                # 🧠 Ensure 'chat_history' key exists
+                chat_history = st.session_state.get("chat_history", [])
+                messages = self.prompt.format_prompt(user_query=user_input, chat_history=chat_history).to_messages()
+                response = self.llm.invoke(messages)
+
+                st.session_state.chat_history.append(HumanMessage(content=user_input))
+                st.session_state.chat_history.append(AIMessage(content=response.content))
+                return {"text": response.content, "intent": "fallback", "raw_input": user_input}
+
             best_match = min(all_names, key=lambda x: levenshtein_distance(x, last_word))
             if levenshtein_distance(best_match, last_word) <= 2:
                 st.session_state.suggested_correction = best_match
