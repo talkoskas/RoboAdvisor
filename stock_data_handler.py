@@ -156,10 +156,10 @@ class StockDataHandler:
     def extract_forecasted_values(self, stock, last_predicted_date, actual_predicted: pd.DataFrame):
         
         forecast_paths = {
-            "LSTM": "/workspaces/FinalProj/LSTM/forecast_lstm_without_reports.csv",
-            "GRU": "/workspaces/FinalProj/GRU/forecast_gru_without_reports.csv",
-            "LightGBM": "/workspaces/FinalProj/LightGBM/model_LightGBM_metrics_and_predictions_total.csv",
-            "XGBoost": "/workspaces/FinalProj/XGBoost/model_XGBoost_metrics_and_predictions_without_report_parameters.csv"
+            "LSTM": os.path.join("LSTM", "forecast_lstm_without_reports.csv"),
+            "GRU": os.path.join("GRU", "forecast_gru_without_reports.csv"),
+            "LightGBM": os.path.join("LightGBM", "model_LightGBM_metrics_and_predictions_total.csv"),
+            "XGBoost": os.path.join("XGBoost", "model_XGBoost_metrics_and_predictions_without_report_parameters.csv")
         }
         best_model_df = pd.read_csv(self.best_model_path, encoding='latin-1')
         model = best_model_df.loc[best_model_df["Company"] == stock, "Model"].values[0]
@@ -220,4 +220,3 @@ class StockDataHandler:
             synchronized.append(df)
 
         return synchronized
-
