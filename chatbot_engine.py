@@ -167,7 +167,10 @@ class ChatbotEngine:
 
             f"⛔ Never hallucinate new tickers or sector names.\n"
             f"If a company/sector isn't recognized, suggest the closest match and ask for confirmation.\n"
-            f"Wait for the user to reply 'yes' before proceeding with correction."
+            f"Wait for the user to reply 'yes' before proceeding with correction.\n"
+            f"If you are given a prompt in the Hebrew language, you must answer in Hebrew in that response only, unless explicitly asked in another language"
+
+
             ),
             MessagesPlaceholder(variable_name="chat_history"),
             ("human", "{user_query}")
