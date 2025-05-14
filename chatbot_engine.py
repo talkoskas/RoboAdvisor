@@ -151,9 +151,6 @@ class ChatbotEngine:
             f"⚙️ Use function calling whenever a tool clearly matches the prompt.\n"
             f"❌ Do NOT ask for clarification—choose the closest match and proceed.\n\n"
 
-            f"✅ When referencing companies, always use tuples like `('TICKER', 'COMPANY NAME')`.\n"
-            f"✅ If the user says 'polim', assume ('POLI','POALIM').\n"
-            f"✅ If the user says 'investments', map it to 'Investment & Holdings'.\n\n"
 
             f"📌 Examples:\n"
             f"- 'Show me teva' → Use `'graph'`\n"
@@ -186,6 +183,7 @@ class ChatbotEngine:
     def handle_input(self, user_input: str):
         if "chat_history" not in st.session_state:
             st.session_state.chat_history = []
+
         def clean_chat_history():
             def convert(m):
                 if isinstance(m, (HumanMessage, AIMessage)):
@@ -221,12 +219,9 @@ class ChatbotEngine:
 
             # ✅ FIRST: Try IntentDetector logic
             try:
-                # Load last intent before detection
                 prev_intent = st.session_state.get("last_intent", None)
-                # Detect intent
                 detected = self.intent_detector.detect(user_input, last_intent=prev_intent)
                 intent = detected.get("intent")
-                # Update immediately, even before branching
                 st.session_state["last_intent"] = intent
 
                 if intent == "graph":
@@ -255,25 +250,25 @@ class ChatbotEngine:
 
                 elif intent == "sector_comparison":
                     st.session_state.last_industries = detected["industries"]
-                    print(self._handle_sector_comparison_intent(detected["industries"]))
-                    return self._handle_sector_comparison_intent(detected["industries"])  # Already includes deep analysis
+                    return self._handle_sector_comparison_intent(detected["industries"])
 
             except Exception as e:
                 pass  # fallback to Gemini
 
             # 🤖 Gemini LLM fallback with tool-calling
             cleaned_history = clean_chat_history()
-            print(cleaned_history)
             messages = self.prompt.format_prompt(user_query=user_input, chat_history=cleaned_history).to_messages()
             response = self.llm.invoke(messages)
 
-            if response.tool_calls:
+            # ✅ Gemini invoked tool
+            if hasattr(response, "tool_calls") and response.tool_calls:
                 return self._handle_tool_call(response)
 
+            # 🛑 fallback to raw Gemini text
             return {"text": response.content, "intent": "fallback", "raw_input": user_input}
 
         except Exception as e:
-            print(e)
+            print("[FALLBACK ERROR]", e)
             user_words = user_input.upper().split()
             all_companies = list(self.intent_detector.ticker_mapping.keys())
             all_tickers = list(self.intent_detector.ticker_mapping.values())
@@ -293,33 +288,12 @@ class ChatbotEngine:
             if len(matched_industries) == 1:
                 return self._handle_industry_intent({"industry": matched_industries[0]})
 
-            last_word = user_words[-1]
-            all_names = all_companies + all_tickers + all_industries
-            # 🧠 Only activate fuzzy correction if user input is likely about stocks/sectors
-            is_stock_related = any(w in all_names for w in user_words)
-            if not is_stock_related:
-                # Let Gemini handle general queries
-                # 🧠 Ensure 'chat_history' key exists
-                chat_history = st.session_state.get("chat_history", [])
-                messages = self.prompt.format_prompt(user_query=user_input, chat_history=chat_history).to_messages()
-                response = self.llm.invoke(messages)
-
-                st.session_state.chat_history.append(HumanMessage(content=user_input))
-                st.session_state.chat_history.append(AIMessage(content=response.content))
-                return {"text": response.content, "intent": "fallback", "raw_input": user_input}
-
-            best_match = min(all_names, key=lambda x: levenshtein_distance(x, last_word))
-            if levenshtein_distance(best_match, last_word) <= 2:
-                st.session_state.suggested_correction = best_match
-                st.session_state.original_prompt = user_input
-                return {
-                    "text": f"⚠️ I couldn’t recognize '{last_word}'. Did you mean **{best_match}**?\n\nIf yes, reply with 'yes' to continue."
-                }
 
             return {
                 "text": f"❌ Sorry, I couldn't recognize '{last_word}' and no close match was found.\n\n{str(e)}",
                 "intent": "fallback"
             }
+
 
 
     def _stream_response(self, user_query):
