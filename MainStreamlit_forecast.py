@@ -108,7 +108,7 @@ class AppManager:
             st.session_state.accepted_disclaimer = False
 
         if not st.session_state.accepted_disclaimer:
-            st.title("🤖 Welcome  to the Robo Advisor – Israeli Stock Market")
+            st.title("🤖 Welcome to the Robo Advisor – Israeli Stock Market")
 
             st.markdown("## 📊 Stock Analysis and Forecasting Application")
             st.markdown("""
