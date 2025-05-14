@@ -1,3 +1,4 @@
+
 import streamlit as st
 from GraphDrawer import GraphDrawer
 import matplotlib.pyplot as plt
@@ -28,12 +29,12 @@ warnings.filterwarnings("ignore")
 
 # Global Configuration
 API_KEY = 'AIzaSyC3XqPeca_kNxjsSb64aHvJbJvyakyGKQI'
-MAPPING_FILE_PATH = "company_name_to_ticker.xlsx"
-LSTM_CSV_PATH = "/workspaces/FinalProj/LSTM/actual_vs_pred_lstm_without_reports.csv"
-XGBOOST_CSV_PATH = "/workspaces/FinalProj/XGBoost/model_XGBoost_metrics_and_predictions_without_report_parameters.csv"
-LIGHTGBM_CSV_PATH = "/workspaces/FinalProj/LightGBM/model_LightGBM_metrics_and_predictions_total.csv"
-BEST_MODEL_CSV = "/workspaces/FinalProj/Metrics/without_ARIMA_model_to_stock.csv"
+LSTM_CSV_PATH = os.path.join("LSTM", "actual_vs_pred_lstm_without_reports.csv")
+XGBOOST_CSV_PATH = os.path.join("XGBoost", "model_XGBoost_metrics_and_predictions_without_report_parameters.csv")
+LIGHTGBM_CSV_PATH = os.path.join("LightGBM", "model_LightGBM_metrics_and_predictions_total.csv")
+BEST_MODEL_CSV = os.path.join("Metrics", "without_ARIMA_model_to_stock.csv")
 SECTORS_DF_PATH = "sectors_df.csv"
+MAPPING_FILE_PATH = "company_name_to_ticker.xlsx"
 
 if "mentioned_tickers" not in st.session_state:
     st.session_state.mentioned_tickers = set()
@@ -49,7 +50,7 @@ class AppManager:
         self.intent_detector = IntentDetector(self.ticker_mapping, self.industry_mapping)
         self.model_paths = {
             "LSTM": LSTM_CSV_PATH,
-            "GRU": "/workspaces/FinalProj/GRU/actual_vs_pred_gru_without_reports.csv",
+            "GRU": os.path.join("GRU", "actual_vs_pred_gru_without_reports.csv"),
             "XGBoost": XGBOOST_CSV_PATH,
             "LightGBM": LIGHTGBM_CSV_PATH,
         }
