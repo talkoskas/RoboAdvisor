@@ -96,6 +96,26 @@ class IntentDetector:
     def detect(self, user_input: str, last_intent: str = None) -> dict:
         user_input = self.normalize_text(user_input)
         words = [self.clean_name(w) for w in user_input.split()]
+        user_words = [w.upper() for w in user_input.split()]
+        all_companies = list(self.ticker_mapping.keys())
+        all_tickers = list(self.ticker_mapping.values())
+        all_industries = list(self.industry_mapping.values())
+        all_known_entities = all_companies + all_industries
+
+        # Check for non-matching last word
+        last_word = user_words[-1]
+        is_stock_related = any(w in all_known_entities for w in user_words)
+
+        if not is_stock_related:
+            best_match = min(all_known_entities, key=lambda x: levenshtein_distance(x, last_word))
+            if levenshtein_distance(best_match, last_word) <= 1:
+                st.session_state["suggested_correction"] = best_match
+                st.session_state["original_prompt"] = user_input
+                # ✅ Update the `words` list with the correction
+                tokens = user_input.split()
+                tokens[-1] = best_match
+                corrected_input = " ".join(tokens)
+                words = [self.clean_name(w) for w in corrected_input.split()]
         print(words)
 
         # 🔍 Additive phrasing logic
@@ -109,7 +129,9 @@ class IntentDetector:
         prev_intent = last_intent
 
         matched_companies = [name for name in words if name in self.company_names]
+        print(matched_companies)
         matched_tickers = [t for t in words if t in self.ticker_mapping.values()]
+        print(matched_tickers)
         matched_industries = [
             key for key in self.industry_mapping.keys()
             if key in normalized_input
