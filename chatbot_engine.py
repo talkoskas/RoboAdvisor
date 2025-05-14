@@ -1,3 +1,4 @@
+
 import os
 import pandas as pd
 import streamlit as st
@@ -17,12 +18,15 @@ API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyC3XqPeca_kNxjsSb64aHvJbJvyakyGKQI")
 
 # Global Configuration
 API_KEY = 'AIzaSyC3XqPeca_kNxjsSb64aHvJbJvyakyGKQI'
-MAPPING_FILE_PATH = "company_name_to_ticker.xlsx"
-LSTM_CSV_PATH = "/workspaces/FinalProj/LSTM/actual_vs_pred_lstm_without_reports.csv"
-XGBOOST_CSV_PATH = "/workspaces/FinalProj/XGBoost/model_XGBoost_metrics_and_predictions_without_report_parameters.csv"
-LIGHTGBM_CSV_PATH = "/workspaces/FinalProj/LightGBM/model_LightGBM_metrics_and_predictions_total.csv"
-BEST_MODEL_CSV = "/workspaces/FinalProj/Metrics/without_ARIMA_model_to_stock.csv"
-SECTORS_DF_PATH = "sectors_df.csv"
+BASE_DIR = os.getcwd()
+
+
+MAPPING_FILE_PATH = os.path.join(BASE_DIR, "company_name_to_ticker.xlsx")
+LSTM_CSV_PATH = os.path.join(BASE_DIR, "LSTM", "actual_vs_pred_lstm_without_reports.csv")
+XGBOOST_CSV_PATH = os.path.join(BASE_DIR, "XGBoost", "model_XGBoost_metrics_and_predictions_without_report_parameters.csv")
+LIGHTGBM_CSV_PATH = os.path.join(BASE_DIR, "LightGBM", "model_LightGBM_metrics_and_predictions_total.csv")
+BEST_MODEL_CSV = os.path.join(BASE_DIR, "Metrics", "without_ARIMA_model_to_stock.csv")
+SECTORS_DF_PATH = os.path.join(BASE_DIR, "sectors_df.csv")
 comp_text = pd.read_excel(MAPPING_FILE_PATH).to_markdown(index=False)
 sectors_text = pd.read_csv(SECTORS_DF_PATH)[["Industry"]].to_markdown(index=False)
 def get_llm_instance(tools=None):
