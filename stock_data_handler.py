@@ -12,6 +12,13 @@ class StockDataHandler:
         self.sector_path = sector_path
         self.best_model_path = best_model_path
 
+        # Load Hebrew name mapping
+        mapping_df = pd.read_excel("company_name_to_ticker.xlsx")
+        self.hebrew_name_mapping = dict(zip(mapping_df["CompanyName"].str.upper(), mapping_df["HebrewCompanyName"]))
+
+        sector_df = pd.read_csv("sectors_df.csv")
+        self.hebrew_industry_mapping = dict(zip(sector_df["Industry"], sector_df["HebrewIndustryName"]))
+
     def extract_by_model(self, ticker: str, model: str, start_date, end_date):
         if model not in self.model_paths and model != "ARIMA":
             raise ValueError(f"Unsupported model: {model}")
@@ -34,21 +41,18 @@ class StockDataHandler:
         ticker = ticker if ticker.endswith(".TA") else f"{ticker}.TA"
         return df[(df["Ticker"] == ticker) & (df["Date"] >= start_date) & (df["Date"] <= end_date)]
 
-
     def _process_model_data(self, company_data, start_date):
         company_data["y_test"] = ast.literal_eval(company_data["y_test"])
         company_data["y_pred"] = ast.literal_eval(company_data["y_pred"])
 
         fixed_start = pd.to_datetime("2024-07-04")
         fixed_end = pd.to_datetime("2024-12-30")
-        total_days = (fixed_end - fixed_start).days + 1  # inclusive
+        total_days = (fixed_end - fixed_start).days + 1
 
-        # Truncate or pad values if necessary to fit range
         y_test = company_data["y_test"][:total_days]
         y_pred = company_data["y_pred"][:total_days]
 
         if len(y_test) < total_days:
-            # pad with last value
             y_test += [y_test[-1]] * (total_days - len(y_test))
         if len(y_pred) < total_days:
             y_pred += [y_pred[-1]] * (total_days - len(y_pred))
@@ -59,7 +63,6 @@ class StockDataHandler:
         predicted_df = pd.DataFrame({"Date": date_range, "Predicted": y_pred})
 
         return pd.merge(actual_df, predicted_df, on="Date")
-
 
     def extract_by_industry(self, industry, start_date, end_date):
         df = pd.read_csv(self.sector_path)
@@ -87,19 +90,14 @@ class StockDataHandler:
                 merged["Ticker"] = full_ticker
                 merged["Industry"] = industry
                 result.append(merged)
-            except Exception as e:
+            except Exception:
                 continue
 
         return pd.concat(result, ignore_index=True) if result else pd.DataFrame()
 
-
     def get_industry_actuals(self, industry, start_date, end_date):
         df = pd.read_csv(self.sector_path)
-
-        # Normalize column names just in case
         df.rename(columns={"Symbol": "Ticker"}, inplace=True)
-
-        # Filter companies in industry
         industry_companies = df[df["Industry"].str.lower() == industry.lower()]
         tickers = industry_companies["Ticker"].tolist()
 
@@ -115,8 +113,8 @@ class StockDataHandler:
                         "Date": data["Date"],
                         "Actual": data["Actual"]
                     }))
-            except Exception as e:
-                continue  # Could log this
+            except Exception:
+                continue
 
         return pd.concat(result, ignore_index=True) if result else pd.DataFrame()
 
@@ -124,11 +122,9 @@ class StockDataHandler:
         df = pd.read_csv(self.sector_path)
         best_models = pd.read_csv(self.best_model_path)
 
-        # Normalize column names
         df.rename(columns={"Symbol": "Ticker"}, inplace=True)
         reverse_map = {v: k for k, v in self.ticker_mapping.items()}
 
-        # Filter companies in industry
         industry_companies = df[df["Industry"].str.lower() == industry.lower()]
         tickers = industry_companies["Ticker"].tolist()
 
@@ -141,20 +137,20 @@ class StockDataHandler:
                 data = self.extract_by_model(full_ticker, model, start_date, end_date)
                 if not data.empty:
                     company_name = reverse_map.get(t, t)
+                    hebrew_name = self.hebrew_name_mapping.get(t, company_name)
                     result.append(pd.DataFrame({
                         "Ticker": full_ticker,
                         "Date": data["Date"],
                         "Predicted": data["Predicted"],
-                        "Company": company_name
+                        "Company": company_name,
+                        "HebrewCompanyName": hebrew_name
                     }))
-            except Exception as e:
+            except Exception:
                 continue
 
         return pd.concat(result, ignore_index=True) if result else pd.DataFrame()
 
-
     def extract_forecasted_values(self, stock, last_predicted_date, actual_predicted: pd.DataFrame):
-        
         forecast_paths = {
             "LSTM": os.path.join("LSTM", "forecast_lstm_without_reports.csv"),
             "GRU": os.path.join("GRU", "forecast_gru_without_reports.csv"),
@@ -176,47 +172,28 @@ class StockDataHandler:
             df = df[df["Stock"] == stock]
             if df.empty:
                 raise ValueError(f"No forecast data found for stock: {stock}")
-        
-            # Extract forecast columns (e.g., Day_1, Day_2, ...)
             forecast_cols = [col for col in df.columns if col.startswith("Day_")]
-        
-            # Reshape from wide to long
             df_melted = df.melt(value_vars=forecast_cols, value_name="Forecast", var_name="Day")
-        
-            # Extract numeric day offset
             df_melted["Day"] = df_melted["Day"].str.extract(r"Day_(\d+)").astype(int)
-        
-            # Generate actual forecast dates
             df_melted["Date"] = [last_predicted_date + timedelta(days=int(x)) for x in df_melted["Day"]]
-        
-            # Finalize forecast DataFrame
             df = df_melted[["Date", "Forecast"]].sort_values("Date").reset_index(drop=True)
 
-
-        # Adjust forecast to start from last predicted value
         last_pred = actual_predicted.loc[actual_predicted["Date"] == last_predicted_date, "Predicted"].values[0]
         adjustment = last_pred - df["Forecast"].iloc[0]
         df["Forecasted"] = df["Forecast"] + adjustment
         df.drop(columns="Forecast", inplace=True)
-
         return df
+
     @staticmethod
     def synchronize_x_axis(dataframes: list) -> list:
-        """
-        Aligns multiple DataFrames to a shared x-axis (date range).
-        Forward-fills missing data.
-        """
         if not dataframes:
             return []
-
         all_dates = pd.concat([df['Date'] for df in dataframes])
         unified_range = pd.date_range(start=all_dates.min(), end=all_dates.max())
-
         synchronized = []
         for df in dataframes:
             df = df.set_index('Date').reindex(unified_range).reset_index()
             df.rename(columns={'index': 'Date'}, inplace=True)
             df.fillna(method='ffill', inplace=True)
             synchronized.append(df)
-
         return synchronized
