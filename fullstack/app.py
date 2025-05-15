@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 
 import auth_manager
 import user_management
-import social_auth
 import utils
 
 # Set page configuration
@@ -60,7 +59,7 @@ def display_login():
     h1 {
         font-size: 2.5rem !important;
         font-weight: 600 !important;
-        color: #FF0000 !important;
+        color: #333 !important;
         margin-bottom: 2rem !important;
     }
     
@@ -73,6 +72,12 @@ def display_login():
     }
     
     /* Continue button styling */
+    .continue-btn {
+        display: flex !important;
+        justify-content: center !important;
+        width: 100% !important;
+    }
+    
     .continue-btn button {
         background-color: #10B981 !important;
         color: white !important;
@@ -81,59 +86,15 @@ def display_login():
         font-weight: 500 !important;
         border-radius: 5px !important;
         border: none !important;
-        width: 100% !important;
+        width: 50% !important;  /* Make button narrower */
     }
     
-    /* OR divider */
-    .divider {
-        display: flex;
-        align-items: center;
-        margin: 1.5rem 0;
-        color: #888;
-    }
-    
-    .divider-line {
-        flex-grow: 1;
-        height: 1px;
-        background-color: #ddd;
-    }
-    
-    .divider-text {
-        padding: 0 1rem;
-        font-size: 0.9rem;
-    }
-    
-    /* Social login buttons */
-    .social-btn {
-        margin-bottom: 0.75rem !important;
-        border: 1px solid #ddd !important;
-        background-color: white !important;
-        color: #333 !important;
-        border-radius: 5px !important;
-        padding: 0.5rem 1rem !important;
+    /* Buttons container */
+    .buttons-container {
         display: flex !important;
-        align-items: center !important;
-        width: 100% !important;
-        cursor: pointer !important;
-    }
-    
-    .social-btn img {
-        margin-right: 0.75rem;
-        height: 24px;
-        width: 24px;
-    }
-    
-    /* Sign Up link */
-    .signup-link {
-        text-align: center;
-        margin: 1rem 0;
-        font-size: 0.9rem;
-    }
-    
-    .signup-link a {
-        color: #10B981 !important;
-        text-decoration: none !important;
-        font-weight: 500 !important;
+        justify-content: space-between !important;
+        gap: 1rem !important;
+        margin-top: 1rem !important;
     }
     
     /* Make container narrower */
@@ -159,10 +120,10 @@ def display_login():
         # Login form
         with st.form("login_form", clear_on_submit=False):
             # Email input
-            email = st.text_input("Email address*", key="login_email")
+            email = st.text_input("Username*", key="login_email")
             
             # Password input
-            password = st.text_input("Password", type="password", key="login_password")
+            password = st.text_input("Password*", type="password", key="login_password")
             
             # Remember me checkbox (hidden by default, can be enabled)
             # Use CSS to hide the checkbox
@@ -181,12 +142,13 @@ def display_login():
                 if not email or not password:
                     st.error("Please enter both email and password")
                 else:
-                    # Try to authenticate with email as username
+                    # Try to authenticate with email
                     login_result = auth_manager.authenticate_user(email, password)
                     if login_result["success"]:
                         # Set session state
                         st.session_state.authenticated = True
-                        st.session_state.username = email
+                        st.session_state.username = login_result["user"]["username"]
+                        st.session_state.email = email
                         
                         # Set auth cookie if remember me is checked
                         if remember_me:
@@ -199,74 +161,18 @@ def display_login():
                     else:
                         st.error(login_result["message"])
         
-        # Sign Up link
-        st.markdown('<div class="signup-link">Don\'t have an account? <a href="#" onclick="document.querySelector(\'[data-testid=\'stForm\'] button[kind=secondaryFormSubmit]\').click();">Sign Up</a></div>', unsafe_allow_html=True)
-        
-        # Register button (hidden, triggered by the Sign Up link)
-        with st.container():
-            # Use container with custom CSS to hide the button
-            st.markdown('<style>.hide-button {display: none;}</style>', unsafe_allow_html=True)
-            st.markdown('<div class="hide-button">', unsafe_allow_html=True)
+        # Buttons container for Register and Forgot password
+        st.markdown('<div class="buttons-container">', unsafe_allow_html=True)
+        col1, col2 = st.columns(2)
+        with col1:
             if st.button("Register", key="register_btn", type="secondary"):
                 st.session_state.registration = True
                 st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Forgot password link (hidden, can be enabled)
-        with st.container():
-            st.markdown('<div class="hide-button">', unsafe_allow_html=True)
+        with col2:
             if st.button("Forgot password?", key="forgot_pwd", type="secondary", help="Reset your password"):
                 st.session_state.reset_password = True
                 st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
-        
-        # OR divider
-        st.markdown('<div class="divider"><div class="divider-line"></div><div class="divider-text">OR</div><div class="divider-line"></div></div>', unsafe_allow_html=True)
-        
-        # Social login buttons
-        # Google login
-        google_btn_html = """
-        <button class="social-btn" id="google-login">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" alt="Google">
-            Continue with Google
-        </button>
-        <script>
-            document.getElementById('google-login').addEventListener('click', function() {
-                document.querySelector('[data-testid="stButton"] button[kind="secondary"]').click();
-            });
-        </script>
-        """
-        st.markdown(google_btn_html, unsafe_allow_html=True)
-        
-        # Hidden button for Google login
-        with st.container():
-            st.markdown('<div class="hide-button">', unsafe_allow_html=True)
-            if st.button("Google Login", key="google_login", type="secondary"):
-                auth_url = social_auth.get_google_auth_url()
-                st.markdown(f'<meta http-equiv="refresh" content="0;URL=\'{auth_url}\'">', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Microsoft login
-        ms_btn_html = """
-        <button class="social-btn" id="ms-login">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg" alt="Microsoft">
-            Continue with Microsoft Account
-        </button>
-        <script>
-            document.getElementById('ms-login').addEventListener('click', function() {
-                document.querySelector('[data-testid="stButton"] button[kind="secondary"]:nth-of-type(2)').click();
-            });
-        </script>
-        """
-        st.markdown(ms_btn_html, unsafe_allow_html=True)
-        
-        # Hidden button for Microsoft login
-        with st.container():
-            st.markdown('<div class="hide-button">', unsafe_allow_html=True)
-            if st.button("Microsoft Login", key="ms_login", type="secondary"):
-                auth_url = social_auth.get_microsoft_auth_url()
-                st.markdown(f'<meta http-equiv="refresh" content="0;URL=\'{auth_url}\'">', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown('</div>', unsafe_allow_html=True)  # Close login-container
 
@@ -328,7 +234,7 @@ def display_registration():
         st.markdown('<div class="registration-container">', unsafe_allow_html=True)
         
         # Title
-        st.title("Create account")
+        st.title("Sign Up")
         
         # Registration form
         with st.form("registration_form", clear_on_submit=False):
@@ -346,7 +252,7 @@ def display_registration():
             
             # Submit button styled as green "Create account" button
             st.markdown('<div class="continue-btn">', unsafe_allow_html=True)
-            submit = st.form_submit_button("Create account")
+            submit = st.form_submit_button("Sign Up")
             st.markdown('</div>', unsafe_allow_html=True)
             
             if submit:
@@ -535,73 +441,86 @@ def display_password_reset():
 def display_main_app():
     st.title(f"Welcome to Stock Market AI Chatbot, {st.session_state.username}!")
     
+    # Custom CSS for the buttons
+    st.markdown("""
+    <style>
+    .button-container {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 1rem !important;
+        max-width: 200px !important;
+        margin: 2rem auto !important;
+    }
+    
+    .logout-btn button[kind=secondaryFormSubmit],
+    .logout-btn button[kind=secondary] {
+        background-color: #ff4444 !important;
+        color: black !important;
+        font-weight: 500 !important;
+        width: 100% !important;
+        border: none !important;
+    }
+    
+    .chatbot-btn button[kind=secondaryFormSubmit],
+    .chatbot-btn button[kind=secondary] {
+        background-color: #10B981 !important;
+        color: black !important;
+        font-weight: 500 !important;
+        width: 100% !important;
+        border: none !important;
+    }
+    
+    /* Override Streamlit's default button styles */
+    .stButton > button {
+        width: 100% !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Create button container
+    st.markdown('<div class="button-container">', unsafe_allow_html=True)
+    
+    # Move to Chatbot button
+    st.markdown('<div class="chatbot-btn">', unsafe_allow_html=True)
+    if st.button("Move to Chatbot"):
+        # Import and run the chatbot file
+        try:
+            import sys
+            import os
+            # Add the parent directory to Python path
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            parent_dir = os.path.dirname(current_dir)
+            sys.path.append(parent_dir)
+
+            print(parent_dir)
+            
+            # Import the module
+            import MainStreamlit_forecast
+            app = MainStreamlit_forecast.AppManager()
+            app.run()
+        except Exception as e:
+            st.error(f"Error loading chatbot: {str(e)}")
+    st.markdown('</div>', unsafe_allow_html=True)
+    
     # Logout button
-    if st.button("Logout"):
+    st.markdown('<div class="logout-btn">', unsafe_allow_html=True)
+    if st.button("Log Out"):
         # Clear session state
         st.session_state.authenticated = False
         st.session_state.username = None
+        st.session_state.email = None
         
-        # Clear auth cookie
-        cookie_manager.delete("auth_token")
+        # Clear auth cookie if it exists
+        try:
+            cookie_manager.delete("auth_token")
+        except:
+            pass  # Ignore if cookie doesn't exist
         
         st.success("You have been logged out")
         st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
     
-    # Here you would integrate with the existing AI chatbot application
-    st.write("You are now logged in. The stock market AI chatbot would appear here.")
-    
-    # Placeholder for the chatbot UI
-    st.markdown("---")
-    st.subheader("Chat with the Stock Market AI")
-    
-    user_input = st.text_input("Ask a question about stocks:", key="user_query")
-    if st.button("Send"):
-        if user_input:
-            # This would be replaced with actual chatbot functionality
-            st.write(f"You asked: {user_input}")
-            st.write("AI response would appear here based on your query.")
-        else:
-            st.warning("Please enter a question first.")
-
-# Handle OAuth callbacks
-params = st.query_params
-if "code" in params and "state" in params:
-    # Social login callback processing
-    state = params["state"]
-    code = params["code"]
-    
-    # Determine provider from state
-    if state.startswith("google"):
-        user_info = social_auth.handle_google_callback(code)
-        if user_info and "email" in user_info:
-            # Create/login user
-            login_result = user_management.social_login(user_info["email"], "google")
-            if login_result["success"]:
-                st.session_state.authenticated = True
-                st.session_state.username = login_result["username"]
-                # Clear URL parameters
-                params.clear()
-                st.rerun()
-            else:
-                st.session_state.login_error = login_result["message"]
-                params.clear()
-                st.rerun()
-    
-    elif state.startswith("facebook"):
-        user_info = social_auth.handle_facebook_callback(code)
-        if user_info and "email" in user_info:
-            # Create/login user
-            login_result = user_management.social_login(user_info["email"], "facebook")
-            if login_result["success"]:
-                st.session_state.authenticated = True
-                st.session_state.username = login_result["username"]
-                # Clear URL parameters
-                params.clear()
-                st.rerun()
-            else:
-                st.session_state.login_error = login_result["message"]
-                params.clear()
-                st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)  # Close button container
 
 # Run the app
 if __name__ == "__main__":
