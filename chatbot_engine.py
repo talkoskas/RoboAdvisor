@@ -29,6 +29,8 @@ BEST_MODEL_CSV = os.path.join(BASE_DIR, "Metrics", "without_ARIMA_model_to_stock
 SECTORS_DF_PATH = os.path.join(BASE_DIR, "sectors_df.csv")
 comp_text = pd.read_excel(MAPPING_FILE_PATH).to_markdown(index=False)
 sectors_text = pd.read_csv(SECTORS_DF_PATH)[["Industry"]].to_markdown(index=False)
+def detect_language(text):
+    return "he" if any('֐' <= c <= 'ת' for c in text) else "en"
 def get_llm_instance(tools=None):
     return ChatGoogleGenerativeAI(
         model="gemini-2.0-flash-lite",
@@ -139,6 +141,7 @@ class ChatbotEngine:
             ("system",
              f"You MUST always respond using the function-calling tools if the user's query matches one of the defined tool descriptions.\n\n" 
              f"Never output raw Python code or markdown unless explicitly asked.\n\n" 
+             f"Always answer in the language that the user wrote to you-english or hebrew.\n\n" 
              f"Do not answer questions by generating code unless the user says 'give me code' or 'show me how to implement'.\n\n"
             f"You are a chatbot assistant designed to analyze stocks on the Israeli (TA) stock market.\n\n"
             f"🎯 Your primary task is to determine which of the following tools best fits the user's request:\n"
@@ -200,7 +203,6 @@ class ChatbotEngine:
             return [msg for msg in (convert(m) for m in st.session_state.chat_history) if msg]
 
         try:
-            # ✅ Retry flow for user accepting a correction
             if user_input.strip().lower() == "yes" and "suggested_correction" in st.session_state:
                 corrected_term = st.session_state.pop("suggested_correction")
                 last_prompt = st.session_state.get("original_prompt", "")
@@ -217,7 +219,9 @@ class ChatbotEngine:
                     st.session_state.chat_history.append(HumanMessage(content=new_prompt))
                     user_input = new_prompt
 
-            # ✅ FIRST: Try IntentDetector logic
+            language = "he" if any('\u0590' <= c <= '\u05EA' for c in user_input) else "en"
+            st.session_state["language"] = language
+
             try:
                 prev_intent = st.session_state.get("last_intent", None)
                 detected = self.intent_detector.detect(user_input, last_intent=prev_intent)
@@ -252,19 +256,16 @@ class ChatbotEngine:
                     st.session_state.last_industries = detected["industries"]
                     return self._handle_sector_comparison_intent(detected["industries"])
 
-            except Exception as e:
-                pass  # fallback to Gemini
+            except Exception:
+                pass
 
-            # 🤖 Gemini LLM fallback with tool-calling
             cleaned_history = clean_chat_history()
             messages = self.prompt.format_prompt(user_query=user_input, chat_history=cleaned_history).to_messages()
             response = self.llm.invoke(messages)
 
-            # ✅ Gemini invoked tool
             if hasattr(response, "tool_calls") and response.tool_calls:
                 return self._handle_tool_call(response)
 
-            # 🛑 fallback to raw Gemini text
             return {"text": response.content, "intent": "fallback", "raw_input": user_input}
 
         except Exception as e:
@@ -288,12 +289,10 @@ class ChatbotEngine:
             if len(matched_industries) == 1:
                 return self._handle_industry_intent({"industry": matched_industries[0]})
 
-
             return {
-                "text": f"❌ Sorry, I couldn't recognize '{last_word}' and no close match was found.\n\n{str(e)}",
+                "text": f"❌ Sorry, I couldn't recognize '{user_input}' and no close match was found.\n\n{str(e)}",
                 "intent": "fallback"
             }
-
 
 
     def _stream_response(self, user_query):
@@ -310,6 +309,9 @@ class ChatbotEngine:
                     return AIMessage(content=m["deep_analysis"])
             return None
 
+        # ✅ Language detection for streaming as well
+        st.session_state["language"] = "he" if any('\u0590' <= c <= '\u05EA' for c in user_query) else "en"
+
         cleaned_history = [
             convert_valid_message(m)
             for m in st.session_state.chat_history
@@ -318,9 +320,8 @@ class ChatbotEngine:
 
         return self.chain.stream({
             "user_query": user_query,
-            "chat_history": cleaned_history  # Now safe for MessagesPlaceholder
+            "chat_history": cleaned_history
         })
-
 
 
 
@@ -332,6 +333,7 @@ class ChatbotEngine:
 
     def _handle_industry_intent(self, intent_data):
         industry = intent_data["industry"]
+        language = st.session_state.get("language", "en")
         start_date = datetime(2024, 1, 1)
         end_date = datetime(2024, 12, 31)
 
@@ -356,17 +358,19 @@ class ChatbotEngine:
 
         full_forecast_df = pd.concat(forecast_dfs) if forecast_dfs else pd.DataFrame()
 
-        fig_actual = self.graph_generator.generate_industry_graph(actual_df, "Actual", industry)
-        fig_pred = self.graph_generator.generate_industry_graph(predicted_df, "Predicted", industry)
-        fig_forecast = self.graph_generator.generate_industry_graph(full_forecast_df, "Forecasted", industry)
+        fig_actual = self.graph_generator.generate_industry_graph(actual_df, "Actual", industry, language=language)
+        fig_pred = self.graph_generator.generate_industry_graph(predicted_df, "Predicted", industry, language=language)
+        fig_forecast = self.graph_generator.generate_industry_graph(full_forecast_df, "Forecasted", industry, language=language)
 
-        summary = self._generate_industry_summary(actual_df, predicted_df, full_forecast_df, ticker_to_company, industry)
+        summary = self._generate_industry_summary(actual_df, predicted_df, full_forecast_df, ticker_to_company, industry, language=language)
         st.session_state.last_industry = industry
 
         return {"text": summary, "graphs": [fig_actual, fig_pred, fig_forecast]}
 
+
     def _handle_graph_intent(self, intent_data):
         company = intent_data["company"].upper()
+        language = st.session_state.get("language", "en")
         ticker = self.intent_detector.resolve_ticker(company) + ".TA"
         start_date = datetime(2024, 1, 1)
         end_date = datetime(2024, 12, 31)
@@ -384,12 +388,14 @@ class ChatbotEngine:
             forecast[["Date", "Forecasted"]]
         ], ignore_index=True).sort_values("Date")
 
-        fig = self.graph_generator.generate_actual_predicted_forecast_graph(combined_df, company, model)
-        text = self._generate_single_stock_summary(company, data, forecast, model)
+        fig = self.graph_generator.generate_actual_predicted_forecast_graph(combined_df, company, model, language=language)
+        text = self._generate_single_stock_summary(company, data, forecast, model, language=language)
         return {"text": text, "graphs": [fig]}
+
 
     def _handle_compare_intent(self, intent_data):
         companies = intent_data["companies"]
+        language = st.session_state.get("language", "en")
         tickers = [self.intent_detector.resolve_ticker(name.upper()) + ".TA" for name in companies]
         ticker_to_company = {v: k for k, v in self.data_handler.ticker_mapping.items()}
 
@@ -415,18 +421,19 @@ class ChatbotEngine:
 
                 combined_dataframes.append((ticker, model, combined))
                 summaries.append(self._generate_single_stock_summary(
-                    ticker_to_company.get(ticker.replace(".TA", ""), ticker), data, forecast, model))
+                    ticker_to_company.get(ticker.replace(".TA", ""), ticker), data, forecast, model, language=language))
             except:
                 continue
 
         if not combined_dataframes:
             return {"text": "No valid data found for comparison."}
 
-        fig = self.graph_generator.generate_comparison_graph(combined_dataframes, ticker_to_company)
-        summary = self._generate_comparison_summary(summaries)
+        fig = self.graph_generator.generate_comparison_graph(combined_dataframes, ticker_to_company, language=language)
+        summary = self._generate_comparison_summary(summaries, language=language)
         return {"text": summary, "graphs": [fig]}
-    def _handle_sector_comparison_intent(self, industries):
 
+    def _handle_sector_comparison_intent(self, industries):
+        language = st.session_state.get("language", "en")
         start_date = datetime(2024, 1, 1)
         end_date = datetime(2025, 3, 13)
 
@@ -439,7 +446,6 @@ class ChatbotEngine:
             return sorted(reduce(set.intersection, date_sets))
 
         for industry in industries:
-            print(industry)
             full_df = self.data_handler.extract_by_industry(industry, start_date, end_date)
             if full_df.empty:
                 continue
@@ -462,7 +468,6 @@ class ChatbotEngine:
                 elif label == "Forecasted":
                     forecasted_frames.append(grouped)
 
-        # ⬇️ Filter by common dates
         common_actual_dates = get_common_dates(actual_frames)
         common_predicted_dates = get_common_dates(predicted_frames)
         common_forecasted_dates = get_common_dates(forecasted_frames)
@@ -475,7 +480,6 @@ class ChatbotEngine:
         predicted_df = predicted_df[predicted_df["Date"].isin(common_predicted_dates)]
         forecasted_df = forecasted_df[forecasted_df["Date"].isin(common_forecasted_dates)]
 
-        # ✅ Now summarize each industry based on filtered actual_df
         summaries = []
         for industry in industries:
             industry_df = actual_df[actual_df["Industry"] == industry].dropna(subset=["Actual"])
@@ -496,23 +500,20 @@ class ChatbotEngine:
         if actual_df.empty:
             return {"text": "No data found for the selected industries."}
 
-        # ⬇️ Generate filtered graphs
-        fig_actual = self.graph_generator.generate_sector_comparison_graph(actual_df, label="Actual")
-        fig_predicted = self.graph_generator.generate_sector_comparison_graph(predicted_df, label="Predicted")
-        fig_forecast = self.graph_generator.generate_sector_comparison_graph(forecasted_df, label="Forecasted")
+        fig_actual = self.graph_generator.generate_sector_comparison_graph(actual_df, label="Actual", language=language)
+        fig_predicted = self.graph_generator.generate_sector_comparison_graph(predicted_df, label="Predicted", language=language)
+        fig_forecast = self.graph_generator.generate_sector_comparison_graph(forecasted_df, label="Forecasted", language=language)
 
-        summary_text = f"📊 Sector comparison between industries:\n\n" + "\n".join(summaries)
+        summary_text = (
+            "📊 Sector comparison between industries:\n\n" if language == "en"
+            else "📊 השוואת תחומים בין תעשיות:\n\n"
+        ) + "\n".join(summaries)
+
         deep_analysis = self._generate_deeper_analysis(summary_text, context_info="Sector Comparison")
-
-        return {
-            "text": summary_text + "\n\n🔍 **Deeper Analysis**\n\n" + deep_analysis,
-            "graphs": [fig_actual, fig_predicted, fig_forecast]
-        }
+        return {"text": summary_text + "\n\n🔍 **Deeper Analysis**\n\n" + deep_analysis, "graphs": [fig_actual, fig_predicted, fig_forecast]}
 
 
-
-
-    def _generate_industry_summary(self, actual_df, predicted_df, forecast_df, name_map, industry):
+    def _generate_industry_summary(self, actual_df, predicted_df, forecast_df, name_map, industry, language="en"):
         def summarize(df, col):
             summary = []
             for ticker in df["Ticker"].unique():
@@ -524,22 +525,38 @@ class ChatbotEngine:
                 end_val = sub[col].iloc[-1]
                 min_, max_, mean_ = sub[col].min(), sub[col].max(), sub[col].mean()
                 increase_rate = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0
-                trend = "upward 📈" if end_val > start_val else "downward 📉"
-                summary.append(
-                    f"- {company}: Min={min_:.2f}, Max={max_:.2f}, Mean={mean_:.2f}, "
-                    f"Increase={increase_rate:.2f}%, Trend={trend}"
-                )
+                trend = "📈" if end_val > start_val else "📉"
+
+                if language == "he":
+                    summary.append(
+                        f"- {company}: מינימום={min_:.2f}, מקסימום={max_:.2f}, ממוצע={mean_:.2f}, "
+                        f"שינוי={increase_rate:.2f}%, מגמה={trend}"
+                    )
+                else:
+                    summary.append(
+                        f"- {company}: Min={min_:.2f}, Max={max_:.2f}, Mean={mean_:.2f}, "
+                        f"Increase={increase_rate:.2f}%, Trend={trend}"
+                    )
             return "\n".join(summary)
 
-        return (
-            f"📊 industry-wide summary for {industry} industry:\n\n"
-            f"**Actuals:**\n{summarize(actual_df, 'Actual')}\n\n"
-            f"**Predictions:**\n{summarize(predicted_df, 'Predicted')}\n\n"
-            f"**Forecasts:**\n{summarize(forecast_df, 'Forecasted')}"
-        )
+        if language == "he":
+            return (
+                f"📊 סיכום רחב עבור תחום {industry}:\n\n"
+                f"**נתוני אמת:**\n{summarize(actual_df, 'Actual')}\n\n"
+                f"**חיזויים:**\n{summarize(predicted_df, 'Predicted')}\n\n"
+                f"**תחזיות:**\n{summarize(forecast_df, 'Forecasted')}"
+            )
+        else:
+            return (
+                f"📊 Industry-wide summary for {industry} industry:\n\n"
+                f"**Actuals:**\n{summarize(actual_df, 'Actual')}\n\n"
+                f"**Predictions:**\n{summarize(predicted_df, 'Predicted')}\n\n"
+                f"**Forecasts:**\n{summarize(forecast_df, 'Forecasted')}"
+            )
 
 
-    def _generate_single_stock_summary(self, company, data, forecast_df, model):
+
+    def _generate_single_stock_summary(self, company, data, forecast_df, model, language="en"):
         def stats(col, df):
             start_val = df[col].iloc[0]
             end_val = df[col].iloc[-1]
@@ -547,7 +564,7 @@ class ChatbotEngine:
                 "min": df[col].min(),
                 "max": df[col].max(),
                 "mean": df[col].mean(),
-                "trend": "upward" if end_val > start_val else "downward",
+                "trend": "📈" if end_val > start_val else "📉",
                 "increase_rate": ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0
             }
 
@@ -555,23 +572,90 @@ class ChatbotEngine:
         predicted = stats("Predicted", data)
         forecast = stats("Forecasted", forecast_df)
 
-        return (
-            f"📈 Stock analysis for {company} using model: **{model}**\n"
-            f"- Actual: Min={actual['min']:.2f}, Max={actual['max']:.2f}, Mean={actual['mean']:.2f}, "
-            f"Increase={actual['increase_rate']:.2f}%, Trend={actual['trend']}\n"
-            f"- Predicted: Min={predicted['min']:.2f}, Max={predicted['max']:.2f}, Mean={predicted['mean']:.2f}, "
-            f"Increase={predicted['increase_rate']:.2f}%, Trend={predicted['trend']}\n"
-            f"- Forecasted: Min={forecast['min']:.2f}, Max={forecast['max']:.2f}, Mean={forecast['mean']:.2f}, "
-            f"Increase={forecast['increase_rate']:.2f}%, Trend={forecast['trend']}"
-        )
+        if language == "he":
+            return (
+                f"📈 ניתוח מניה עבור {company} במודל: **{model}**\n"
+                f"- אמת: מינימום={actual['min']:.2f}, מקסימום={actual['max']:.2f}, ממוצע={actual['mean']:.2f}, "
+                f"שינוי={actual['increase_rate']:.2f}%, מגמה={actual['trend']}\n"
+                f"- חיזוי: מינימום={predicted['min']:.2f}, מקסימום={predicted['max']:.2f}, ממוצע={predicted['mean']:.2f}, "
+                f"שינוי={predicted['increase_rate']:.2f}%, מגמה={predicted['trend']}\n"
+                f"- תחזית: מינימום={forecast['min']:.2f}, מקסימום={forecast['max']:.2f}, ממוצע={forecast['mean']:.2f}, "
+                f"שינוי={forecast['increase_rate']:.2f}%, מגמה={forecast['trend']}"
+            )
+        else:
+            return (
+                f"📈 Stock analysis for {company} using model: **{model}**\n"
+                f"- Actual: Min={actual['min']:.2f}, Max={actual['max']:.2f}, Mean={actual['mean']:.2f}, "
+                f"Increase={actual['increase_rate']:.2f}%, Trend={actual['trend']}\n"
+                f"- Predicted: Min={predicted['min']:.2f}, Max={predicted['max']:.2f}, Mean={predicted['mean']:.2f}, "
+                f"Increase={predicted['increase_rate']:.2f}%, Trend={predicted['trend']}\n"
+                f"- Forecasted: Min={forecast['min']:.2f}, Max={forecast['max']:.2f}, Mean={forecast['mean']:.2f}, "
+                f"Increase={forecast['increase_rate']:.2f}%, Trend={forecast['trend']}"
+            )
 
 
-    def _generate_comparison_summary(self, summaries):
+
+
+
+    def _generate_comparison_summary(self, summaries, language="en"):
+        if language == "he":
+            return "📊 סיכום השוואה בין חברות:\n\n" + "\n\n".join(summaries)
         return "📊 Comparison Summary:\n\n" + "\n\n".join(summaries)
+
     def _generate_deeper_analysis(self, summary: str, context_info: str = "") -> str:
         """
         Uses Gemini to generate deeper analysis from an existing summary and optional metadata.
+        Supports Hebrew or English output based on st.session_state["language"].
         """
+        language = st.session_state.get("language", "en")
+
+        if language == "he":
+            prompt_text = f"""
+        הנך אנליסט פיננסי. כתוב ניתוח מעמיק, ברור, מוסבר היטב ובשפה נגישה לקהל הרחב — עבור המידע הבא.
+
+         תשתמש בידע חיצוני – אל תעבוד רק על בסיס הטקסט שלפניך. שמור על מבנה מאורגן:
+
+        ### מה יש לנו (יסודות):
+        - הסבר בסיסי על שם המניה.
+        - מהו המודל החוזה.
+        - מהי משמעות הערכים: אמת, חיזוי, תחזית.
+
+        ### תבניות, מגמות ותובנות:
+        - מה המגמה הכללית?
+        - האם יש האטה בקצב הצמיחה?
+        - האם המודל שומרני או אופטימי?
+
+        ### סיכונים שיש לקחת בחשבון:
+        - אילוצים של המודל.
+        - תנודתיות.
+        - אזהרת אי-ודאות.
+
+        ### למידה למתחילים:
+        - מה זה ניתוח מניות.
+        - מה זה מגמות.
+        - למה חשוב להבין תנודתיות.
+        - הבנת מגבלות המודל.
+        - חשיבות פיזור השקעות.
+
+        ### לסיום:
+        - מסקנה כוללת.
+        - אזהרה לגבי ייעוץ מקצועי.
+
+        — התחלה כאן —
+        הקשר כללי:
+        {context_info}
+
+        סיכום הנתונים:
+        {summary}
+        """.strip()
+        llm = get_llm_instance()
+        chain = ChatPromptTemplate.from_template("{prompt}") | llm | StrOutputParser()
+        result = chain.invoke({"prompt": prompt_text})
+
+        # Ensure RTL rendering in Streamlit
+        return f'<div dir="rtl" style="text-align: right;">{result}</div>'
+
+        # 🔁 ENGLISH: default
         prompt_text = (
             "You are a financial analyst. Based on the given summary, values, and context, "
             "write a **deeper analysis** including patterns, anomalies, risks, and insights. "
@@ -583,3 +667,5 @@ class ChatbotEngine:
         chain = ChatPromptTemplate.from_template("{prompt}") | llm | StrOutputParser()
         result = chain.invoke({"prompt": prompt_text})
         return result
+
+
