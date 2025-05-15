@@ -648,12 +648,12 @@ class ChatbotEngine:
         סיכום הנתונים:
         {summary}
         """.strip()
-        llm = get_llm_instance()
-        chain = ChatPromptTemplate.from_template("{prompt}") | llm | StrOutputParser()
-        result = chain.invoke({"prompt": prompt_text})
+            llm = get_llm_instance()
+            chain = ChatPromptTemplate.from_template("{prompt}") | llm | StrOutputParser()
+            result = chain.invoke({"prompt": prompt_text})
 
-        # Ensure RTL rendering in Streamlit
-        return f'<div dir="rtl" style="text-align: right;">{result}</div>'
+            # Ensure RTL rendering in Streamlit
+            return f'<div dir="rtl" style="text-align: right;">{result}</div>'
 
         # 🔁 ENGLISH: default
         prompt_text = (
