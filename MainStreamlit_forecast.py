@@ -1,6 +1,5 @@
 
 import streamlit as st
-from GraphDrawer import GraphDrawer
 import matplotlib.pyplot as plt
 from io import BytesIO
 import os
@@ -196,10 +195,24 @@ class AppManager:
                     for graph in message.get("graphs", []):
                         st.plotly_chart(graph, use_container_width=True, key=str(id(graph)))
                     if message.get("text"):
-                        st.markdown(message["text"])
+                        lang = st.session_state.get("language", "en")
+                        align = "right" if lang == "he" else "left"
+                        dir = "rtl" if lang == "he" else "ltr"
+                        st.markdown(
+                            f'<div dir="{dir}" style="text-align: {align}; font-size: 18px;">{message["text"]}</div>',
+                            unsafe_allow_html=True
+                        )
+
                     if message.get("deep_analysis"):
                         st.markdown("### 🔍 Deeper Analysis")
-                        st.markdown(message["deep_analysis"])
+                        lang = st.session_state.get("language", "en")
+                        align = "right" if lang == "he" else "left"
+                        dir = "rtl" if lang == "he" else "ltr"
+                        st.markdown(
+                            f'<div dir="{dir}" style="text-align: {align}; font-size: 18px;">{message["deep_analysis"]}</div>',
+                            unsafe_allow_html=True
+                        )
+
             elif isinstance(message, AIMessage):
                 with st.chat_message("assistant"):
                     st.write(message.content)
@@ -208,6 +221,7 @@ class AppManager:
         prompt = selected_prompt or manual_input
 
         if prompt:
+            st.session_state["language"] = "he" if any('\u0590' <= c <= '\u05EA' for c in prompt) else "en"
             user_msg = HumanMessage(content=prompt)
             st.session_state.chat_history.append(user_msg)
             with st.chat_message("user"):
@@ -220,7 +234,14 @@ class AppManager:
                     for graph in structured_response.get("graphs", []):
                         st.plotly_chart(graph, use_container_width=True, key=str(id(graph)))
                     if structured_response.get("text"):
-                        st.markdown(structured_response["text"])
+                        lang = st.session_state.get("language", "en")
+                        align = "right" if lang == "he" else "left"
+                        dir = "rtl" if lang == "he" else "ltr"
+                        st.markdown(
+                            f'<div dir="{dir}" style="text-align: {align}; font-size: 18px;">{structured_response["text"]}</div>',
+                            unsafe_allow_html=True
+                        )
+
 
                 st.session_state.chat_history.append({
                     "role": "assistant",
@@ -240,7 +261,14 @@ class AppManager:
                         deep_result = self.engine._generate_deeper_analysis(pending["summary"], context_info=pending["context"])
                         with st.chat_message("assistant"):
                             st.markdown("### 🔍 Deeper Analysis")
-                            st.markdown(deep_result)
+                            lang = st.session_state.get("language", "en")
+                            align = "right" if lang == "he" else "left"
+                            dir = "rtl" if lang == "he" else "ltr"
+                            st.markdown(
+                                f'<div dir="{dir}" style="text-align: {align}; font-size: 18px;">{deep_result}</div>',
+                                unsafe_allow_html=True
+                            )
+
                         st.session_state.chat_history.append({
                             "role": "assistant",
                             "deep_analysis": deep_result
