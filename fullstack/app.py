@@ -489,6 +489,7 @@ def display_main_app():
             import os
             # Add the parent directory to Python path
             current_dir = os.path.dirname(os.path.abspath(__file__))
+            print(current_dir)
             parent_dir = os.path.dirname(current_dir)
             sys.path.append(parent_dir)
 
