@@ -107,6 +107,10 @@ class AppManager:
             st.session_state.accepted_disclaimer = False
 
         if not st.session_state.accepted_disclaimer:
+            # ── INSERT A GREETING ─────────────────────────────────────────────────────────
+            user = st.session_state.get("username", None)
+            if user:
+                st.markdown(f"### Hello, **{user}** 👋")
             st.title("🤖 Welcome to the Robo Advisor – Israeli Stock Market")
 
             st.markdown("## 📊 Stock Analysis and Forecasting Application")
@@ -169,10 +173,18 @@ class AppManager:
 
             return
 
-        st.set_page_config(page_title="Robo Advisor", layout="wide")
+        # st.set_page_config(page_title="Robo Advisor", layout="wide")
+
+        # ── INSERT A GREETING ─────────────────────────────────────────────────────────
+        user = st.session_state.get("username", None)
+        if user:
+            st.markdown(f"### Hello, **{user}** 👋")
+        # ───────────────────────────────────────────────────────────────────────────────
+
         st.title("🤖 Robo Advisor – Israeli Stock Market")
         st.sidebar.title("About")
         st.sidebar.info("This chatbot provides stock analysis using historical and forecasted data.")
+
 
         default_prompts = [
             "show me the graph of leumi",
