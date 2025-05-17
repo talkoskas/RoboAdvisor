@@ -178,8 +178,8 @@ def display_login():
         
         # Login form
         with st.form("login_form", clear_on_submit=False):
-            # Email input
-            email = st.text_input("Email address*", key="login_email")
+            #Username input
+            username = st.text_input("Username", key="reg_username")
             
             # Password input
             password = st.text_input("Password", type="password", key="login_password")
@@ -198,20 +198,21 @@ def display_login():
             st.markdown('</div>', unsafe_allow_html=True)
             
             if submit:
-                if not email or not password:
-                    st.error("Please enter both email and password")
+                if not username or not password:
+                    st.error("Please enter both username and password")
                 else:
-                    # Try to authenticate with email as username
-                    login_result = auth_manager.authenticate_user(email, password)
+                    # Try to authenticate with username as username
+                    login_result = auth_manager.authenticate_user(username, password)
                     if login_result["success"]:
                         # Set session state
                         st.session_state.authenticated = True
-                        st.session_state.username = email
+                        st.session_state.username = username
+                        st.session_state.chat_history = []
                         
                         # Set auth cookie if remember me is checked
                         if remember_me:
                             expiry = datetime.now() + timedelta(minutes=3)
-                            token = auth_manager.generate_auth_token(email)
+                            token = auth_manager.generate_auth_token(username)
                             cookie_manager.set("auth_token", token, expires_at=expiry)
                         
                         st.success("Login successful")
@@ -240,55 +241,6 @@ def display_login():
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
         
-        # OR divider
-        st.markdown('<div class="divider"><div class="divider-line"></div><div class="divider-text">OR</div><div class="divider-line"></div></div>', unsafe_allow_html=True)
-        
-        # Social login buttons
-        # Google login
-        google_btn_html = """
-        <button class="social-btn" id="google-login">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" alt="Google">
-            Continue with Google
-        </button>
-        <script>
-            document.getElementById('google-login').addEventListener('click', function() {
-                document.querySelector('[data-testid="stButton"] button[kind="secondary"]').click();
-            });
-        </script>
-        """
-        st.markdown(google_btn_html, unsafe_allow_html=True)
-        
-        # Hidden button for Google login
-        with st.container():
-            st.markdown('<div class="hide-button">', unsafe_allow_html=True)
-            if st.button("Google Login", key="google_login", type="secondary"):
-                auth_url = social_auth.get_google_auth_url()
-                st.markdown(f'<meta http-equiv="refresh" content="0;URL=\'{auth_url}\'">', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Microsoft login
-        ms_btn_html = """
-        <button class="social-btn" id="ms-login">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg" alt="Microsoft">
-            Continue with Microsoft Account
-        </button>
-        <script>
-            document.getElementById('ms-login').addEventListener('click', function() {
-                document.querySelector('[data-testid="stButton"] button[kind="secondary"]:nth-of-type(2)').click();
-            });
-        </script>
-        """
-        st.markdown(ms_btn_html, unsafe_allow_html=True)
-        
-        # Hidden button for Microsoft login
-        with st.container():
-            st.markdown('<div class="hide-button">', unsafe_allow_html=True)
-            if st.button("Microsoft Login", key="ms_login", type="secondary"):
-                auth_url = social_auth.get_microsoft_auth_url()
-                st.markdown(f'<meta http-equiv="refresh" content="0;URL=\'{auth_url}\'">', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-        
-        st.markdown('</div>', unsafe_allow_html=True)  # Close login-container
 
 def display_registration():
     # Reuse the same CSS from login page
@@ -381,8 +333,15 @@ def display_registration():
                 else:
                     registration_result = user_management.register_user(username, email, password)
                     if registration_result["success"]:
-                        st.success("Registration successful. You can now login.")
+                        st.success("Registration successful! Logging you in…")
+                        # mark registration flow as over
                         st.session_state.registration = False
+                        # auto-authenticate
+                        st.session_state.authenticated = True
+                        # use the email or username as your st.session_state.username
+                        st.session_state.username = username
+                        st.session_state.chat_history = []  
+                        # (optionally set a cookie if you want "remember me" here)
                         st.rerun()
                     else:
                         st.error(registration_result["message"])
@@ -567,6 +526,7 @@ def display_main_app():
         st.session_state.authenticated = False
         st.session_state.username = None
         st.session_state.cookie_checked = False
+        st.session_state.chat_history = []
         # Clear auth cookie
         cookie_manager.delete("auth_token")
         
@@ -588,6 +548,7 @@ if "code" in params and "state" in params:
             if login_result["success"]:
                 st.session_state.authenticated = True
                 st.session_state.username = login_result["username"]
+                st.session_state.chat_history = []
                 # Clear URL parameters
                 params.clear()
                 st.rerun()
@@ -604,6 +565,7 @@ if "code" in params and "state" in params:
             if login_result["success"]:
                 st.session_state.authenticated = True
                 st.session_state.username = login_result["username"]
+                st.session_state.chat_history = []
                 # Clear URL parameters
                 params.clear()
                 st.rerun()
