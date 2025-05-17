@@ -97,100 +97,141 @@ class IntentDetector:
         raise ValueError(f"Industry '{name}' not recognized. Did you mean: {', '.join(suggestions)}?")
 
     def detect(self, user_input: str, last_intent: str = None) -> dict:
-        # 🔄 Translate Hebrew company/industry names to English before detection
+        # 1️⃣ Hebrew → English
         for heb, eng in self.hebrew_to_english_company.items():
-            if heb in user_input:
-                user_input = user_input.replace(heb, eng)
+            user_input = user_input.replace(heb, eng)
         for heb, eng in self.hebrew_to_english_industry.items():
-            if heb in user_input:
-                user_input = user_input.replace(heb, eng)
+            user_input = user_input.replace(heb, eng)
 
-        user_input = self.normalize_text(user_input)
-        words = [self.clean_name(w) for w in user_input.split()]
-        user_words = [w.upper() for w in user_input.split()]
-        all_companies = list(self.ticker_mapping.keys())
-        all_tickers = list(self.ticker_mapping.values())
-        all_industries = list(self.industry_mapping.values())
-        all_known_entities = all_companies + all_industries
+        # 2️⃣ Normalize once
+        normalized = self.normalize_text(user_input)           # e.g. "rami levi"
+        normalized_no_space = normalized.replace(" ", "")      # e.g. "ramilevi"
 
-        last_word = user_words[-1]
-        is_stock_related = any(w in all_known_entities for w in user_words)
+        # 3️⃣ Company‐name substring matches (highest priority)
+        matched_companies = []
+        matched_tickers  = []
+        for comp_name, ticker in self.ticker_mapping.items():
+            comp_key = self.normalize_text(comp_name)
+            if comp_key in normalized:
+                matched_companies.append(comp_name)
 
-        if not is_stock_related:
-            best_match = min(all_known_entities, key=lambda x: levenshtein_distance(x, last_word))
-            if levenshtein_distance(best_match, last_word) <= 1:
-                st.session_state["suggested_correction"] = best_match
-                st.session_state["original_prompt"] = user_input
-                tokens = user_input.split()
-                tokens[-1] = best_match
-                corrected_input = " ".join(tokens)
-                words = [self.clean_name(w) for w in corrected_input.split()]
+        # 4️⃣ Only if no names matched, check raw tickers
+        if len(matched_companies) < 1:
+            for name, ticker in self.ticker_mapping.items():
+                if ticker.lower() in normalized_no_space:
+                    matched_companies.append(name)
 
+        # 5️⃣ Industry substring matches
+        matched_industries = [
+            canon for key, canon in self.industry_mapping.items()
+            if self.normalize_text(key) in normalized
+        ]
+
+        # 6️⃣ Additive logic
         additive_keywords = {
             "add", "also", "compare", "with", "vs", "versus", "too", "as well",
             "along", "plus", "include", "including", "alongside", "next to", "and",
             "another", "more", "combine", "in addition"
         }
-        normalized_input = user_input.lower()
-        is_additive = any(kw in normalized_input for kw in additive_keywords)
-        prev_intent = last_intent
+        is_additive = any(kw in normalized for kw in additive_keywords)
 
-        matched_companies = [name for name in words if name in self.company_names]
-        matched_tickers = [t for t in words if t in self.ticker_mapping.values()]
-        matched_industries = [
-            key for key in self.industry_mapping.keys()
-            if key in normalized_input
-        ]
+        # a) If continuing from graph/compare and “add” appears, merge old companies
+        if last_intent in {"graph","compare"} and is_additive:
+            prev = st.session_state.get("last_company")
+            prev_list = st.session_state.get("last_companies", [])
+            if prev and prev not in matched_companies:
+                matched_companies.append(prev)
+            for pc in prev_list:
+                if pc not in matched_companies:
+                    matched_companies.append(pc)
+            # if now 2+, go compare
+            unique = list(dict.fromkeys(matched_companies))
+            if len(unique) >= 2:
+                st.session_state.last_companies = unique
+                return {"intent":"compare","companies":unique}
 
-        total_companies = list(set(matched_companies + [
-            k for k, v in self.ticker_mapping.items() if v in matched_tickers
-        ]))
-
-        if prev_intent in {"graph", "compare"} and is_additive:
-            prev_company = st.session_state.get("last_company")
-            if prev_company and prev_company not in total_companies:
-                total_companies.append(prev_company)
-            prev_companies = st.session_state.get("last_companies", [])
-            for pc in prev_companies:
-                if pc not in total_companies:
-                    total_companies.append(pc)
-            if len(total_companies) >= 2:
-                st.session_state.last_companies = total_companies
-                return {"intent": "compare", "companies": list(set(total_companies))}
-
-        if prev_intent in {"industry_values", "sector_comparison"} and is_additive:
-            prev_industry = st.session_state.get("last_industry")
-            if prev_industry and prev_industry not in matched_industries:
-                matched_industries.append(prev_industry)
-            prev_industries = st.session_state.get("last_industries", [])
-            for pi in prev_industries:
+        # b) If continuing from industry_values/sector_comparison and “add” appears
+        if last_intent in {"industry_values","sector_comparison"} and is_additive:
+            prev_ind = st.session_state.get("last_industry")
+            prev_inds = st.session_state.get("last_industries", [])
+            if prev_ind and prev_ind not in matched_industries:
+                matched_industries.append(prev_ind)
+            for pi in prev_inds:
                 if pi not in matched_industries:
                     matched_industries.append(pi)
-            if len(matched_industries) >= 2:
-                st.session_state.last_industries = matched_industries
-                return {"intent": "sector_comparison", "industries": list(set(matched_industries))}
+            unique_i = list(dict.fromkeys(matched_industries))
+            if len(unique_i) >= 2:
+                st.session_state.last_industries = unique_i
+                return {"intent":"sector_comparison","industries":unique_i}
 
+        # 7️⃣ Decide intent purely by count of substring‐matches
+        comps = list(dict.fromkeys(matched_companies))
+        inds  = list(dict.fromkeys(matched_industries))
+
+        if len(comps) >= 2:
+            st.session_state.last_companies = comps
+            return {"intent":"compare","companies":comps}
+        if len(comps) == 1:
+            st.session_state.last_company = comps[0]
+            return {"intent":"graph","company":comps[0]}
+        if len(inds) >= 2:
+            st.session_state.last_industries = inds
+            return {"intent":"sector_comparison","industries":inds}
+        if len(inds) == 1:
+            st.session_state.last_industry = inds[0]
+            return {"intent":"industry_values","industry":inds[0]}
+
+        # 8️⃣ Fallback to your existing fuzzy/keyword logic
+        if self.fuzzy_contains_keyword(normalized, self.intent_keywords["compare"]):
+            return {
+                "intent":  "compare",
+                "companies": self.extract_company_names(user_input)
+            }
+        if self.fuzzy_contains_keyword(normalized, self.intent_keywords["graph"]):
+            return {
+                "intent":  "graph",
+                "company": self.extract_company_name(user_input)
+            }
+        if self.fuzzy_contains_keyword(normalized, self.intent_keywords["industry_values"]):
+            return {
+                "intent":  "industry_values",
+                "industry": self.extract_industry_name(user_input)
+            }
+
+        # 9️⃣ Default to free‐text
+        return {"intent": "text"}
+
+
+
+
+        # Token-based compare/graph fallback
         if len(total_companies) >= 2:
             st.session_state.last_companies = total_companies
             return {"intent": "compare", "companies": total_companies}
-        elif len(total_companies) == 1:
+        if len(total_companies) == 1:
             st.session_state.last_company = total_companies[0]
             return {"intent": "graph", "company": total_companies[0]}
-        elif len(matched_industries) >= 2:
-            st.session_state.last_industries = matched_industries
-            return {"intent": "sector_comparison", "industries": matched_industries}
-        elif len(matched_industries) == 1:
-            st.session_state.last_industry = matched_industries[0]
-            return {"intent": "industry_values", "industry": matched_industries[0]}
 
-        if self.fuzzy_contains_keyword(user_input, self.intent_keywords["industry_values"]):
-            return {"intent": "industry_values", "industry": self.extract_industry_name(user_input)}
-        if self.fuzzy_contains_keyword(user_input, self.intent_keywords["compare"]):
-            return {"intent": "compare", "companies": self.extract_company_names(user_input)}
-        if self.fuzzy_contains_keyword(user_input, self.intent_keywords["graph"]):
-            return {"intent": "graph", "company": self.extract_company_name(user_input)}
+        # 4️⃣ Keyword-only fallback using your existing extractors
+        if self.fuzzy_contains_keyword(ui, self.intent_keywords["industry_values"]):
+            return {
+                "intent": "industry_values",
+                "industry": self.extract_industry_name(raw)
+            }
+        if self.fuzzy_contains_keyword(ui, self.intent_keywords["compare"]):
+            return {
+                "intent": "compare",
+                "companies": self.extract_company_names(raw)
+            }
+        if self.fuzzy_contains_keyword(ui, self.intent_keywords["graph"]):
+            return {
+                "intent": "graph",
+                "company": self.extract_company_name(raw)
+            }
 
+        # 5️⃣ Finally, default to “text”
         return {"intent": "text"}
+
 
     def extract_industry_name(self, user_input: str) -> str:
         for keyword in self.intent_keywords["industry_values"]:
