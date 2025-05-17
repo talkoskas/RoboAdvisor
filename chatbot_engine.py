@@ -204,7 +204,7 @@ class ChatbotEngine:
 
         try:
             if user_input.strip().lower() == "yes" and "suggested_correction" in st.session_state:
-                corrected_term = st.session_state.pop("suggested_correction")
+                corrected_t4erm = st.session_state.pop("suggested_correction")
                 last_prompt = st.session_state.get("original_prompt", "")
 
                 ticker_map = self.intent_detector.ticker_mapping
