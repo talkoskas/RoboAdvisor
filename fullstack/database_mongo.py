@@ -10,10 +10,14 @@ def get_user_by_email(email):
     return users_col.find_one({"email": email})
 
 def create_user(username, email, password_hash, provider="local"):
+    print(f"Checking if username {username} exists...")
     if users_col.find_one({"username": username}):
+        print(f"Username {username} already exists")
         return {"success": False, "message": "Username already exists"}
 
+    print(f"Checking if email {email} exists...")
     if users_col.find_one({"email": email}):
+        print(f"Email {email} already registered")
         return {"success": False, "message": "Email already registered"}
 
     user_data = {
@@ -24,8 +28,14 @@ def create_user(username, email, password_hash, provider="local"):
         "created_at": datetime.utcnow().isoformat()
     }
 
-    users_col.insert_one(user_data)
-    return {"success": True, "message": "User created successfully"}
+    print("Attempting to insert user into database...")
+    try:
+        result = users_col.insert_one(user_data)
+        print(f"Insert successful, document ID: {result.inserted_id}")
+        return {"success": True, "message": "User created successfully"}
+    except Exception as e:
+        print(f"Error inserting user: {str(e)}")
+        return {"success": False, "message": f"Database error: {str(e)}"}
 
 def update_user_password(username, new_password_hash):
     result = users_col.update_one(

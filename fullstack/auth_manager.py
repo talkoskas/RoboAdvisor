@@ -3,8 +3,7 @@ import os
 import jwt
 from datetime import datetime, timedelta
 import uuid
-#import database_mongo as database
-import database
+import database_mongo
 
 # Secret key for JWT tokens
 JWT_SECRET = os.getenv("JWT_SECRET", "default_secret_key_change_in_production")
@@ -19,7 +18,7 @@ def verify_password(password, hashed_password):
 
 def authenticate_user(username, password):
     """Authenticate a user with username and password"""
-    user = database.get_user_by_username(username)
+    user = database_mongo.get_user_by_username(username)
     
     if not user:
         return {"success": False, "message": "Invalid username or password"}
@@ -47,7 +46,7 @@ def validate_auth_token(token):
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
         username = payload["sub"]
-        user = database.get_user_by_username(username)
+        user = database_mongo.get_user_by_username(username)
         return user
     except jwt.ExpiredSignatureError:
         return None

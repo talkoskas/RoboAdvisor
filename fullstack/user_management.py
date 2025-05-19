@@ -1,5 +1,4 @@
-#import database_mongo as database
-import database
+import database_mongo as database
 import auth_manager
 import utils
 import os
@@ -7,31 +6,40 @@ import streamlit as st
 
 def register_user(username, email, password):
     """Register a new user"""
+    print(f"Attempting to register user: {username} with email: {email}")
+    
     # Validate inputs
     if not username or not email or not password:
+        print("Registration failed: Missing required fields")
         return {"success": False, "message": "All fields are required"}
     
     if not utils.is_valid_email(email):
+        print("Registration failed: Invalid email format")
         return {"success": False, "message": "Invalid email format"}
     
     if len(password) < 8:
+        print("Registration failed: Password too short")
         return {"success": False, "message": "Password must be at least 8 characters long"}
     
     # Check if username is already taken
     existing_user = database.get_user_by_username(username)
     if existing_user:
+        print(f"Registration failed: Username {username} already exists")
         return {"success": False, "message": "Username already exists"}
     
     # Check if email is already registered
     existing_email = database.get_user_by_email(email)
     if existing_email:
+        print(f"Registration failed: Email {email} already registered")
         return {"success": False, "message": "Email is already registered"}
     
     # Hash the password
     password_hash = auth_manager.hash_password(password)
     
     # Create the user
+    print("Attempting to create user in database...")
     result = database.create_user(username, email, password_hash)
+    print(f"Database creation result: {result}")
     return result
 
 def request_password_reset(email):
