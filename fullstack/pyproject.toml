@@ -24,5 +24,6 @@ dependencies = [
     "langchain-google-genai",
     "google-generativeai",
     "pyspellchecker",
-    "python-Levenshtein"
+    "python-Levenshtein",
+    "bson"
 ]
