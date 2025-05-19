@@ -14,7 +14,7 @@ import os, sys
 # ① Compute the absolute path to the project root (parent of this file)
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 
-# ② Inject it into Python’s import search path
+# ② Inject it into Python's import search path
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
@@ -527,8 +527,9 @@ def display_main_app():
         st.session_state.username = None
         st.session_state.cookie_checked = False
         st.session_state.chat_history = []
-        # Clear auth cookie
-        cookie_manager.delete("auth_token")
+        # Clear auth cookie if it exists
+        if cookie_manager.get("auth_token"):
+            cookie_manager.delete("auth_token")
         
         st.rerun()
     
