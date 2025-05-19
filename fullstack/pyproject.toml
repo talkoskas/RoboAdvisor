@@ -25,6 +25,5 @@ dependencies = [
     "google-generativeai",
     "pyspellchecker",
     "python-Levenshtein",
-    "bson",
     "pymongo"
 ]
