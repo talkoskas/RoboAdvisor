@@ -149,7 +149,7 @@ class AppManager:
 
         - 🟢 `show me the graph of leumi`
         - 🟢 `compare leumi and poalim`
-        - 🟢 `show me all companies in industry Banks`
+        - 🟢 `show me all banks`
 
         The app will detect your intent and generate relevant insights and visuals.
         """)
@@ -189,7 +189,7 @@ class AppManager:
         default_prompts = [
             "show me the graph of leumi",
             "compare leumi and poalim",
-            "show me all companies in industry Banks"
+            "show me all banks"
         ]
         cols = st.columns(len(default_prompts))
         selected_prompt = None
@@ -259,7 +259,7 @@ class AppManager:
             })
 
             # Schedule deeper analysis after each valid intent
-            if structured_response.get("intent") in ["graph", "compare", "industry_values"]:
+            if structured_response.get("intent") in ["graph", "compare", "industry_values", "sector_comparison", "addition"]:
                 st.session_state["deep_analysis_pending"] = {
                     "summary": structured_response["text"],
                     "context": f"{structured_response.get('intent').capitalize()} Analysis"

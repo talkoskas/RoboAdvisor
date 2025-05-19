@@ -203,15 +203,16 @@ class ChatbotEngine:
             return [msg for msg in (convert(m) for m in st.session_state.chat_history) if msg]
 
         try:
+            # ── Correction‐confirmation flow ─────────────────────────────────────────
             if user_input.strip().lower() == "yes" and "suggested_correction" in st.session_state:
-                corrected_t4erm = st.session_state.pop("suggested_correction")
-                last_prompt = st.session_state.get("original_prompt", "")
+                corrected_term = st.session_state.pop("suggested_correction")
+                last_prompt    = st.session_state.get("original_prompt", "")
 
                 ticker_map = self.intent_detector.ticker_mapping
                 if corrected_term in ticker_map.values():
-                    company_name = [k for k, v in ticker_map.items() if v == corrected_term]
-                    if company_name:
-                        corrected_term = company_name[0]
+                    names = [k for k, v in ticker_map.items() if v == corrected_term]
+                    if names:
+                        corrected_term = names[0]
 
                 if corrected_term and last_prompt:
                     new_prompt = last_prompt.rsplit(" ", 1)[0] + " " + corrected_term
@@ -219,80 +220,92 @@ class ChatbotEngine:
                     st.session_state.chat_history.append(HumanMessage(content=new_prompt))
                     user_input = new_prompt
 
+            # ── Language detection ────────────────────────────────────────────────────
             language = "he" if any('\u0590' <= c <= '\u05EA' for c in user_input) else "en"
             st.session_state["language"] = language
 
-            try:
-                prev_intent = st.session_state.get("last_intent", None)
-                detected = self.intent_detector.detect(user_input, last_intent=prev_intent)
-                intent = detected.get("intent")
-                st.session_state["last_intent"] = intent
+            # ── Intent detection ──────────────────────────────────────────────────────
+            prev_intent = st.session_state.get("last_intent", None)
+            detected    = self.intent_detector.detect(user_input, last_intent=prev_intent)
+            intent      = detected.get("intent")
+            comps       = detected.get("companies", None)
+            industries  = detected.get("industries", None)
+            st.session_state["last_intent"] = intent
+            print(intent)
 
-                if intent == "graph":
-                    result = self._handle_graph_intent({"company": detected["company"]})
-                    st.session_state["deep_analysis_pending"] = {
-                        "summary": result["text"],
-                        "context": f"{detected['company']} Stock Forecast"
-                    }
-                    return result
+            # ── 0️⃣ Handle “addition” intent ───────────────────────────────────────
+            if intent == "addition":
+                # • company‐level addition
+                if comps is not None:
+                    merged = comps
+                    print("merged:")
+                    print(merged)
+                    st.session_state.last_companies = merged
+                    # if we were graphing before, preserve that, otherwise compare
+                    base = prev_intent if prev_intent in {"graph", "compare"} else "compare"
+                    print("base:")
+                    print(base)
+                    st.session_state.last_intent = base
+                    # merged list of ≥2 always compares
+                    return self._handle_compare_intent({"companies": merged})
 
-                elif intent == "compare":
-                    result = self._handle_compare_intent({"companies": detected["companies"]})
-                    st.session_state["deep_analysis_pending"] = {
-                        "summary": result["text"],
-                        "context": "Stock Comparison"
-                    }
-                    return result
+                # • industry‐level addition
+                if industries is not None:
+                    merged_inds = industries
+                    st.session_state.last_industries = merged_inds
+                    st.session_state.last_intent     = "sector_comparison"
+                    return self._handle_sector_comparison_intent(merged_inds)
 
-                elif intent == "industry_values":
-                    result = self._handle_industry_intent({"industry": detected["industry"]})
-                    st.session_state["deep_analysis_pending"] = {
-                        "summary": result["text"],
-                        "context": f"{detected['industry']} Industry"
-                    }
-                    return result
+            # ── 1️⃣ Fresh graph ───────────────────────────────────────────────────
+            if intent == "graph":
+                st.session_state.last_companies = [detected["company"]]
+                st.session_state.last_intent    = "graph"
+                result = self._handle_graph_intent({"company": detected["company"]})
+                st.session_state["deep_analysis_pending"] = {
+                    "summary": result["text"],
+                    "context": f"{detected['company']} Stock Forecast"
+                }
+                return result
 
-                elif intent == "sector_comparison":
-                    st.session_state.last_industries = detected["industries"]
-                    return self._handle_sector_comparison_intent(detected["industries"])
+            # ── 2️⃣ Fresh compare ─────────────────────────────────────────────────
+            if intent == "compare":
+                print(detected["companies"])
+                result = self._handle_compare_intent({"companies": detected["companies"]})
+                st.session_state["deep_analysis_pending"] = {
+                    "summary": result["text"],
+                    "context": "Stock Comparison"
+                }
+                return result
 
-            except Exception:
-                pass
+            # ── 3️⃣ Fresh industry values ─────────────────────────────────────────
+            if intent == "industry_values":
+                result = self._handle_industry_intent({"industry": detected["industry"]})
+                st.session_state["deep_analysis_pending"] = {
+                    "summary": result["text"],
+                    "context": f"{detected['industry']} Industry"
+                }
+                return result
 
-            cleaned_history = clean_chat_history()
-            messages = self.prompt.format_prompt(user_query=user_input, chat_history=cleaned_history).to_messages()
-            response = self.llm.invoke(messages)
+            # ── 4️⃣ Fresh sector comparison ────────────────────────────────────────
+            if intent == "sector_comparison":
+                st.session_state.last_industries = detected["industries"]
+                return self._handle_sector_comparison_intent(detected["industries"])
 
-            if hasattr(response, "tool_calls") and response.tool_calls:
-                return self._handle_tool_call(response)
+        except Exception:
+            pass
 
-            return {"text": response.content, "intent": "fallback", "raw_input": user_input}
+        # ── Fallback to LLM with chat history ───────────────────────────────────
+        cleaned_history = clean_chat_history()
+        messages = self.prompt.format_prompt(
+            user_query=user_input,
+            chat_history=cleaned_history
+        ).to_messages()
+        response = self.llm.invoke(messages)
 
-        except Exception as e:
-            print("[FALLBACK ERROR]", e)
-            user_words = user_input.upper().split()
-            all_companies = list(self.intent_detector.ticker_mapping.keys())
-            all_tickers = list(self.intent_detector.ticker_mapping.values())
-            all_industries = list(self.intent_detector.industry_mapping.values())
+        if hasattr(response, "tool_calls") and response.tool_calls:
+            return self._handle_tool_call(response)
 
-            matched_companies = [w for w in user_words if w in all_companies]
-            matched_tickers = [w for w in user_words if w in all_tickers]
-            matched_industries = [w for w in user_words if w in all_industries]
-
-            if len(matched_companies) + len(matched_tickers) == 1:
-                company = matched_companies[0] if matched_companies else next(
-                    (k for k, v in self.intent_detector.ticker_mapping.items() if v in matched_tickers), None
-                )
-                if company:
-                    return self._handle_graph_intent({"company": company})
-
-            if len(matched_industries) == 1:
-                return self._handle_industry_intent({"industry": matched_industries[0]})
-
-            return {
-                "text": f"❌ Sorry, I couldn't recognize '{user_input}' and no close match was found.\n\n{str(e)}",
-                "intent": "fallback"
-            }
+        return {"text": response.content, "intent": "fallback", "raw_input": user_input}
 
 
     def _stream_response(self, user_query):
