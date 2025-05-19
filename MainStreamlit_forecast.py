@@ -287,6 +287,7 @@ class AppManager:
                     st.session_state.chat_history.append({"role": "assistant", "deep_analysis": deep_result})
             if c2.button("❌ No thanks", use_container_width=True):
                 st.session_state.pop("deep_analysis_pending", None)
+                st.rerun()
 
 if __name__ == "__main__":
     app = AppManager()
