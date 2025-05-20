@@ -8,7 +8,7 @@ import user_management
 import social_auth
 import utils
 # fullstack/app.py
-
+from database_mongo import create_chat, get_chats_by_user
 import os, sys
 
 # ① Compute the absolute path to the project root (parent of this file)
@@ -59,6 +59,8 @@ if not st.session_state.authenticated and not st.session_state.cookie_checked:
         if user:
             st.session_state.authenticated = True
             st.session_state.username = user["username"]
+
+
 
 
 # Main app logic
@@ -206,19 +208,41 @@ def display_login():
                     if login_result["success"]:
                         # Set session state
                         st.session_state.authenticated = True
-                        st.session_state.username = username
-                        st.session_state.chat_history = []
-                        
+                        st.session_state.username      = username
+
+                        # ─── Load existing chats for sidebar selection ───
+                        st.session_state.available_chats     = get_chats_by_user(username)
+
+                        # ─── Create a fresh chat session in MongoDB ───
+                        new_id = create_chat(username, [], None)
+                        st.session_state.current_chat_id     = str(new_id)
+
+                        # ─── Initialize an empty chat history in session_state ───
+                        st.session_state.chat_history         = []
+
+                        # ─── Default to the new chat in the sidebar ───
+                        if st.session_state.available_chats:
+                            # find the meta with the max last_updated
+                            latest_meta = max(
+                                st.session_state.available_chats,
+                                key=lambda m: m["last_updated"]
+                            )
+                            st.session_state.selected_chat_idx = st.session_state.available_chats.index(latest_meta)
+                        else:
+                            st.session_state.selected_chat_idx = 0
+
+
                         # Set auth cookie if remember me is checked
                         if remember_me:
                             expiry = datetime.now() + timedelta(minutes=3)
-                            token = auth_manager.generate_auth_token(username)
+                            token  = auth_manager.generate_auth_token(username)
                             cookie_manager.set("auth_token", token, expires_at=expiry)
-                        
+
                         st.success("Login successful")
                         st.rerun()
                     else:
                         st.error(login_result["message"])
+
         
         # Sign Up link
         st.markdown('<div class="signup-link">Don\'t have an account? <a href="#" onclick="document.querySelector(\'[data-testid=\'stForm\'] button[kind=secondaryFormSubmit]\').click();">Sign Up</a></div>', unsafe_allow_html=True)
@@ -336,15 +360,30 @@ def display_registration():
                         st.success("Registration successful! Logging you in…")
                         # mark registration flow as over
                         st.session_state.registration = False
+
                         # auto-authenticate
                         st.session_state.authenticated = True
-                        # use the email or username as your st.session_state.username
-                        st.session_state.username = username
-                        st.session_state.chat_history = []  
+                        st.session_state.username      = username
+
+                        # ─── Load existing chats for sidebar selection ───
+                        st.session_state.available_chats     = get_chats_by_user(username)
+
+                        # ─── Create a fresh chat session in MongoDB ───
+                        new_id = create_chat(username, [], None)
+                        st.session_state.current_chat_id     = str(new_id)
+
+                        # ─── Initialize an empty chat history in session_state ───
+                        st.session_state.chat_history         = []
+
+                        # ─── Default to the new chat in the sidebar ───
+                        st.session_state.selected_chat_idx    = 0
+
                         # (optionally set a cookie if you want "remember me" here)
+
                         st.rerun()
                     else:
                         st.error(registration_result["message"])
+
         
         # Login link
         st.markdown('<div class="login-link">Already have an account? <a href="#" onclick="document.querySelector(\'[data-testid=\'stForm\'] button[kind=secondaryFormSubmit]\').click();">Sign In</a></div>', unsafe_allow_html=True)
@@ -549,7 +588,16 @@ if "code" in params and "state" in params:
             if login_result["success"]:
                 st.session_state.authenticated = True
                 st.session_state.username = login_result["username"]
+                # ─── Load existing chats for sidebar selection ───
+                st.session_state.available_chats = get_chats_by_user(username)
+
+                # ─── Create a fresh chat session in MongoDB ───
+                new_id = create_chat(username, [], None)
+                st.session_state.current_chat_id = str(new_id)
+
+                # ─── Initialize an empty chat history in session_state ───
                 st.session_state.chat_history = []
+
                 # Clear URL parameters
                 params.clear()
                 st.rerun()
@@ -566,7 +614,16 @@ if "code" in params and "state" in params:
             if login_result["success"]:
                 st.session_state.authenticated = True
                 st.session_state.username = login_result["username"]
+                # ─── Load existing chats for sidebar selection ───
+                st.session_state.available_chats = get_chats_by_user(username)
+
+                # ─── Create a fresh chat session in MongoDB ───
+                new_id = create_chat(username, [], None)
+                st.session_state.current_chat_id = str(new_id)
+
+                # ─── Initialize an empty chat history in session_state ───
                 st.session_state.chat_history = []
+
                 # Clear URL parameters
                 params.clear()
                 st.rerun()
