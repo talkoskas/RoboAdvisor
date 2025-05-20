@@ -12,7 +12,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI, HarmCategory, HarmBlo
 from langchain.tools.render import format_tool_to_openai_function
 from functools import reduce
 from Levenshtein import distance as levenshtein_distance
-
+from database_mongo import create_chat, update_chat
+from db import users_chat_col
 
 API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyC3XqPeca_kNxjsSb64aHvJbJvyakyGKQI")
 
@@ -183,6 +184,47 @@ class ChatbotEngine:
         self.graph_generator = graph_generator
         self.intent_detector = intent_detector
 
+    def save_chat(self):
+        """
+        Serialize st.session_state.chat_history and upsert into MongoDB
+        in a way that never calls .content on a dict.
+        """
+        username = st.session_state.get("username")
+        if not username:
+            return
+
+        serialized = []
+        for m in st.session_state.chat_history:
+            # 1️⃣ If it's a real message object with .content
+            if isinstance(m, dict):
+                role = m.get("role", "assistant")
+                text = m.get("content") or m.get("text", "")
+
+            elif hasattr(m, "content"):
+                text = m.content
+                role = "user" if isinstance(m, HumanMessage) else "assistant"
+
+            # 2️⃣ Else if someone sneaked in a dict
+            
+
+            # 3️⃣ Anything else? skip it.
+            else:
+                continue
+
+            serialized.append({"role": role, "content": text})
+
+        # Upsert into the current chat
+        chat_id = st.session_state.get("current_chat_id")
+        if chat_id:
+            modified = update_chat(chat_id, serialized)
+            if modified == 0:
+                new_id = create_chat(username, serialized)
+                st.session_state.current_chat_id = str(new_id)
+        else:
+            new_id = create_chat(username, serialized)
+            st.session_state.current_chat_id = str(new_id)
+
+
     def handle_input(self, user_input: str):
         if "chat_history" not in st.session_state:
             st.session_state.chat_history = []
@@ -231,30 +273,30 @@ class ChatbotEngine:
             comps       = detected.get("companies", None)
             industries  = detected.get("industries", None)
             st.session_state["last_intent"] = intent
-            print(intent)
 
             # ── 0️⃣ Handle “addition” intent ───────────────────────────────────────
             if intent == "addition":
                 # • company‐level addition
                 if comps is not None:
                     merged = comps
-                    print("merged:")
-                    print(merged)
                     st.session_state.last_companies = merged
                     # if we were graphing before, preserve that, otherwise compare
                     base = prev_intent if prev_intent in {"graph", "compare"} else "compare"
-                    print("base:")
-                    print(base)
                     st.session_state.last_intent = base
                     # merged list of ≥2 always compares
-                    return self._handle_compare_intent({"companies": merged})
+                    result = self._handle_compare_intent({"companies": merged})
+                    self.save_chat()
+                    return result
+
 
                 # • industry‐level addition
                 if industries is not None:
                     merged_inds = industries
                     st.session_state.last_industries = merged_inds
                     st.session_state.last_intent     = "sector_comparison"
-                    return self._handle_sector_comparison_intent(merged_inds)
+                    result = self._handle_sector_comparison_intent(merged_inds)
+                    self.save_chat()
+                    return result
 
             # ── 1️⃣ Fresh graph ───────────────────────────────────────────────────
             if intent == "graph":
@@ -265,16 +307,17 @@ class ChatbotEngine:
                     "summary": result["text"],
                     "context": f"{detected['company']} Stock Forecast"
                 }
+                self.save_chat()
                 return result
 
             # ── 2️⃣ Fresh compare ─────────────────────────────────────────────────
             if intent == "compare":
-                print(detected["companies"])
                 result = self._handle_compare_intent({"companies": detected["companies"]})
                 st.session_state["deep_analysis_pending"] = {
                     "summary": result["text"],
                     "context": "Stock Comparison"
                 }
+                self.save_chat()
                 return result
 
             # ── 3️⃣ Fresh industry values ─────────────────────────────────────────
@@ -284,11 +327,17 @@ class ChatbotEngine:
                     "summary": result["text"],
                     "context": f"{detected['industry']} Industry"
                 }
+                self.save_chat()
                 return result
 
             # ── 4️⃣ Fresh sector comparison ────────────────────────────────────────
             if intent == "sector_comparison":
                 st.session_state.last_industries = detected["industries"]
+                st.session_state["deep_analysis_pending"] = {
+                    "summary": result["text"],
+                    "context": f"{detected['industries']} Industries"
+                }
+                self.save_chat()
                 return self._handle_sector_comparison_intent(detected["industries"])
 
         except Exception:
@@ -305,7 +354,9 @@ class ChatbotEngine:
         if hasattr(response, "tool_calls") and response.tool_calls:
             return self._handle_tool_call(response)
 
-        return {"text": response.content, "intent": "fallback", "raw_input": user_input}
+        output = {"text": response.content, "intent": "fallback", "raw_input": user_input}
+        self.save_chat()
+        return output
 
 
     def _stream_response(self, user_query):
