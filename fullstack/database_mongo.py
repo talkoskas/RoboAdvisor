@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 import time
 from bson.objectid import ObjectId
-from db import users_col, reset_tokens_col
+from db import users_col, reset_tokens_col, users_chat_col
 
 def get_user_by_username(username):
     return users_col.find_one({"username": username})
@@ -71,3 +71,48 @@ def validate_reset_token(token):
 def invalidate_reset_token(token):
     reset_tokens_col.delete_one({"token": token})
     return {"success": True}
+def create_chat(username, chat_history, ts=None):
+    """
+    Create a new chat session for the given user.
+    Returns the inserted document’s _id.
+    """
+    doc = {
+        "username": username,
+        "chat_history": chat_history,
+        "last_updated": ts or datetime.utcnow()
+    }
+    result = users_chat_col.insert_one(doc)
+    return result.inserted_id
+
+
+def get_chats_by_user(username):
+    """
+    Fetch all chat sessions’ metadata for a user (no chat_history).
+    Returns a list of docs with _id and last_updated.
+    """
+    cursor = users_chat_col.find(
+        {"username": username},
+        {"chat_history": 0}
+    ).sort("last_updated", -1)
+    return list(cursor)
+
+
+def update_chat(chat_id, chat_history, ts=None):
+    """
+    Overwrite an existing session’s history and timestamp by its _id.
+    Returns number of modified docs (0 or 1).
+    """
+    result = users_chat_col.update_one(
+        {"_id": ObjectId(chat_id)},
+        {"$set": {
+            "chat_history": chat_history,
+            "last_updated": ts or datetime.utcnow()
+        }}
+    )
+    return result.modified_count
+def get_chat_by_id(chat_id):
+    """
+    Retrieve a single chat session document (with its full history) by _id.
+    """
+    return users_chat_col.find_one({"_id": ObjectId(chat_id)})
+
