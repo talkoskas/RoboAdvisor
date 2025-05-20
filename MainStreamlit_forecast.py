@@ -23,7 +23,8 @@ from langchain_core.messages import AIMessage, HumanMessage
 from intent_detector import IntentDetector
 from stock_data_handler import StockDataHandler
 from graph_generator import GraphGenerator
-
+from plotly.graph_objects import Figure
+from database_mongo import get_chat_by_id
 warnings.filterwarnings("ignore")
 
 # Global Configuration
@@ -184,6 +185,56 @@ class AppManager:
         st.title("🤖 Robo Advisor – Israeli Stock Market")
         st.sidebar.title("About")
         st.sidebar.info("This chatbot provides stock analysis using historical and forecasted data.")
+        # ─── Chat Sessions Switcher ─────────────────────────
+        st.sidebar.title("Your Chats")
+
+        # 1️⃣ Sort sessions newest→oldest so “New Chat” appears first
+        chat_metas = sorted(
+            st.session_state.get("available_chats", []),
+            key=lambda c: c["last_updated"],
+            reverse=True
+        )
+
+        # 2️⃣ Build a list of labels (first user prompt or “New Chat”)
+        chat_labels = []
+        for meta in chat_metas:
+            doc = get_chat_by_id(meta["_id"])
+            first = next(
+                (m.get("content", "") for m in doc.get("chat_history", []) if m.get("role") == "user"),
+                ""
+            )
+            chat_labels.append(first.strip() or "New Chat")
+
+        # 3️⃣ Render as a radio (segmented) control, defaulting to index 0
+        if chat_labels:
+            idx = st.sidebar.radio(
+                "Switch chats",
+                options=list(range(len(chat_labels))),
+                format_func=lambda i: chat_labels[i],
+                index=0,
+                key="selected_chat_idx"
+            )
+
+            selected_meta = chat_metas[idx]
+            if str(selected_meta["_id"]) != st.session_state.get("current_chat_id"):
+                # persist the chat we’re leaving
+                self.engine.save_chat()
+
+                # load the newly selected session
+                chat_doc = get_chat_by_id(selected_meta["_id"])
+                st.session_state.chat_history = []
+                for m in chat_doc.get("chat_history", []):
+                    if m.get("role") == "user":
+                        st.session_state.chat_history.append(
+                            HumanMessage(content=m.get("content", ""))
+                        )
+                    else:
+                        st.session_state.chat_history.append(
+                            AIMessage(content=m.get("content", ""))
+                        )
+
+                # mark this as the active chat
+                st.session_state.current_chat_id = str(selected_meta["_id"])
 
         # Default prompt buttons
         default_prompts = [
