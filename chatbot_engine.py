@@ -14,6 +14,7 @@ from functools import reduce
 from Levenshtein import distance as levenshtein_distance
 from database_mongo import create_chat, update_chat
 from db import users_chat_col
+import plotly.graph_objects as go
 
 API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyC3XqPeca_kNxjsSb64aHvJbJvyakyGKQI")
 
@@ -186,8 +187,7 @@ class ChatbotEngine:
 
     def save_chat(self):
         """
-        Serialize st.session_state.chat_history and upsert into MongoDB
-        in a way that never calls .content on a dict.
+        Serialize st.session_state.chat_history (including graphs) and upsert.
         """
         username = st.session_state.get("username")
         if not username:
@@ -195,25 +195,40 @@ class ChatbotEngine:
 
         serialized = []
         for m in st.session_state.chat_history:
-            # 1️⃣ If it's a real message object with .content
+            # Assistant messages stored as dict
             if isinstance(m, dict):
-                role = m.get("role", "assistant")
-                text = m.get("content") or m.get("text", "")
+                entry = {
+                    "role": m.get("role", "assistant"),
+                    "content": m.get("content", "")
+                }
 
-            elif hasattr(m, "content"):
-                text = m.content
-                role = "user" if isinstance(m, HumanMessage) else "assistant"
+                # ─── NEW: serialize any Plotly graphs safely ───
+                graphs = m.get("graphs", [])
+                json_graphs = []
+                for fig in graphs:
+                    if isinstance(fig, go.Figure):
+                        json_graphs.append(fig.to_json())
+                if json_graphs:
+                    entry["graphs"] = json_graphs
 
-            # 2️⃣ Else if someone sneaked in a dict
-            
+                # carry over any deeper analysis, etc.
+                if "deep_analysis" in m:
+                    entry["deep_analysis"] = m["deep_analysis"]
 
-            # 3️⃣ Anything else? skip it.
+            # HumanMessage → simple user entry
+            elif isinstance(m, HumanMessage):
+                entry = {"role": "user", "content": m.content}
+
+            # AIMessage → simple assistant entry
+            elif isinstance(m, AIMessage):
+                entry = {"role": "assistant", "content": m.content}
+
             else:
                 continue
 
-            serialized.append({"role": role, "content": text})
+            serialized.append(entry)
 
-        # Upsert into the current chat
+        # Upsert into MongoDB as before…
         chat_id = st.session_state.get("current_chat_id")
         if chat_id:
             modified = update_chat(chat_id, serialized)
