@@ -210,26 +210,23 @@ def display_login():
                         st.session_state.authenticated = True
                         st.session_state.username      = username
 
-                        # ─── Load existing chats for sidebar selection ───
-                        st.session_state.available_chats     = get_chats_by_user(username)
-
-                        # ─── Create a fresh chat session in MongoDB ───
+                            # ─── Create a fresh chat session in MongoDB ───
                         new_id = create_chat(username, [], None)
-                        st.session_state.current_chat_id     = str(new_id)
+                        st.session_state.current_chat_id = str(new_id)
 
                         # ─── Initialize an empty chat history in session_state ───
-                        st.session_state.chat_history         = []
+                        st.session_state.chat_history = []
 
-                        # ─── Default to the new chat in the sidebar ───
-                        if st.session_state.available_chats:
-                            # find the meta with the max last_updated
-                            latest_meta = max(
-                                st.session_state.available_chats,
-                                key=lambda m: m["last_updated"]
-                            )
-                            st.session_state.selected_chat_idx = st.session_state.available_chats.index(latest_meta)
-                        else:
-                            st.session_state.selected_chat_idx = 0
+                        # ─── Reload & sort all chats so newest (our “New Chat”) is first ───
+                        st.session_state.available_chats = sorted(
+                            get_chats_by_user(username),
+                            key=lambda m: m["last_updated"],
+                            reverse=True
+                        )
+
+                        # ─── Force the sidebar to select the very first entry (index 0) ───
+                        st.session_state.selected_chat_idx = 0
+
 
 
                         # Set auth cookie if remember me is checked
@@ -365,18 +362,23 @@ def display_registration():
                         st.session_state.authenticated = True
                         st.session_state.username      = username
 
-                        # ─── Load existing chats for sidebar selection ───
-                        st.session_state.available_chats     = get_chats_by_user(username)
-
-                        # ─── Create a fresh chat session in MongoDB ───
+                            # ─── Create a fresh chat session in MongoDB ───
                         new_id = create_chat(username, [], None)
-                        st.session_state.current_chat_id     = str(new_id)
+                        st.session_state.current_chat_id = str(new_id)
 
                         # ─── Initialize an empty chat history in session_state ───
-                        st.session_state.chat_history         = []
+                        st.session_state.chat_history = []
 
-                        # ─── Default to the new chat in the sidebar ───
-                        st.session_state.selected_chat_idx    = 0
+                        # ─── Reload & sort all chats so newest (our “New Chat”) is first ───
+                        st.session_state.available_chats = sorted(
+                            get_chats_by_user(username),
+                            key=lambda m: m["last_updated"],
+                            reverse=True
+                        )
+
+                        # ─── Force the sidebar to select the very first entry (index 0) ───
+                        st.session_state.selected_chat_idx = 0
+
 
                         # (optionally set a cookie if you want "remember me" here)
 
