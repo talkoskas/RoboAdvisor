@@ -25,6 +25,7 @@ from stock_data_handler import StockDataHandler
 from graph_generator import GraphGenerator
 from plotly.graph_objects import Figure
 from database_mongo import get_chat_by_id
+from plotly.io import from_json
 warnings.filterwarnings("ignore")
 
 # Global Configuration
@@ -224,14 +225,38 @@ class AppManager:
                 chat_doc = get_chat_by_id(selected_meta["_id"])
                 st.session_state.chat_history = []
                 for m in chat_doc.get("chat_history", []):
+                    # unify old vs new summary key
+                    main_text = m.get("content") or m.get("text", "") or ""
+                    # rebuild any graphs
+                    figs = []
+                    for fig_json in m.get("graphs", []):
+                        try:
+                            figs.append(from_json(fig_json))
+                        except:
+                            pass
+
+                    # deep analysis might live in its own field
+                    deep = m.get("deep_analysis")
+
+                    # skip truly empty placeholder messages
+                    if not (main_text.strip() or figs or deep):
+                        continue
+
                     if m.get("role") == "user":
                         st.session_state.chat_history.append(
-                            HumanMessage(content=m.get("content", ""))
+                            HumanMessage(content=main_text)
                         )
                     else:
-                        st.session_state.chat_history.append(
-                            AIMessage(content=m.get("content", ""))
-                        )
+                        entry = {
+                            "role":      "assistant",
+                            "content":   main_text,
+                            "graphs":    figs
+                        }
+                        if deep:
+                            entry["deep_analysis"] = deep
+
+                        st.session_state.chat_history.append(entry)
+
 
                 # mark this as the active chat
                 st.session_state.current_chat_id = str(selected_meta["_id"])
@@ -249,32 +274,53 @@ class AppManager:
                 selected_prompt = p
 
         # Display chat history
-        for message in st.session_state.chat_history:
+        # ── Display chat history ─────────────────────────────────────────────────
+        for msg_idx, message in enumerate(st.session_state.chat_history):
             if isinstance(message, HumanMessage):
-                with st.chat_message("user"): st.write(message.content)
+                with st.chat_message("user"):
+                    st.write(message.content)
+
+            # our reconstructed assistant dicts
             elif isinstance(message, dict) and message.get("role") == "assistant":
                 with st.chat_message("assistant"):
-                    for graph in message.get("graphs", []):
-                        st.plotly_chart(graph, use_container_width=True, key=str(id(graph)))
-                    if message.get("text"):
-                        lang = st.session_state.get("language", "en")
+                    # 1️⃣ Render each Plotly figure with a stable key
+                    for fig_idx, fig in enumerate(message.get("graphs", [])):
+                        st.plotly_chart(
+                            fig,
+                            use_container_width=True,
+                            key=f"chat{msg_idx}_fig{fig_idx}"
+                        )
+
+                    # 2️⃣ Render the main summary text
+                    content = message.get("content")
+                    if content:
+                        lang  = st.session_state.get("language", "en")
                         align = "right" if lang == "he" else "left"
-                        dir_attr = "rtl" if lang == "he" else "ltr"
+                        dir_  = "rtl"   if lang == "he" else "ltr"
                         st.markdown(
-                            f'<div dir="{dir_attr}" style="text-align: {align}; font-size: 18px;">{message["text"]}</div>',
+                            f'<div dir="{dir_}" style="text-align: {align}; font-size: 18px;">'
+                            f'{content}</div>',
                             unsafe_allow_html=True
                         )
-                    if message.get("deep_analysis"):
+
+                    # 3️⃣ Render deeper analysis if present
+                    deep = message.get("deep_analysis")
+                    if deep:
                         st.markdown("### 🔍 Deeper Analysis")
-                        lang = st.session_state.get("language", "en")
+                        lang  = st.session_state.get("language", "en")
                         align = "right" if lang == "he" else "left"
-                        dir_attr = "rtl" if lang == "he" else "ltr"
+                        dir_  = "rtl"   if lang == "he" else "ltr"
                         st.markdown(
-                            f'<div dir="{dir_attr}" style="text-align: {align}; font-size: 18px;">{message["deep_analysis"]}</div>',
+                            f'<div dir="{dir_}" style="text-align: {align}; font-size: 18px;">'
+                            f'{deep}</div>',
                             unsafe_allow_html=True
                         )
+
+            # legacy AIMessage objects (fallback)
             elif isinstance(message, AIMessage):
-                with st.chat_message("assistant"): st.write(message.content)
+                with st.chat_message("assistant"):
+                    st.write(message.content)
+
 
         # User input
         manual_input = st.chat_input("What would you like to know?")
@@ -305,7 +351,7 @@ class AppManager:
             # Save summary to history
             st.session_state.chat_history.append({
                 "role": "assistant",
-                "text": structured_response.get("text", ""),
+                "content": structured_response.get("text", ""),
                 "graphs": structured_response.get("graphs", [])
             })
 
