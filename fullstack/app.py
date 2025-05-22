@@ -75,31 +75,31 @@ def main():
         display_login()
 
 def display_login():
-    # Custom CSS for styling elements similar to the image
+    # CSS styles
     st.markdown("""
     <style>
-    /* Use Apple-style system font stack */
     html, body, [class*="css"] {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
     }
 
-    /* Main title styling */
     h1 {
-        font-size: 2.5rem !important;
+        font-size: 2.2rem !important;
         font-weight: 600 !important;
         color: #FF0000 !important;
-        margin-bottom: 2rem !important;
+        text-align: center !important;
+        margin-bottom: 1.5rem !important;
     }
 
-    /* Input field styling */
-    .stTextInput>div>div>input {
-        padding: 0.8rem !important;
-        font-size: 1rem !important;
-        border-radius: 5px !important;
-        border: 1px solid #ccc !important;
+    .login-wrapper {
+        max-width: 400px;
+        margin: 3rem auto;
+        padding: 2rem;
+        background-color: #fff;
+        border: 1px solid #e5e5e5;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
     }
 
-    /* Continue button styling */
     .continue-btn button {
         background-color: #10B981 !important;
         color: white !important;
@@ -111,49 +111,9 @@ def display_login():
         width: 100% !important;
     }
 
-    /* OR divider */
-    .divider {
-        display: flex;
-        align-items: center;
-        margin: 1.5rem 0;
-        color: #888;
-    }
-
-    .divider-line {
-        flex-grow: 1;
-        height: 1px;
-        background-color: #ddd;
-    }
-
-    .divider-text {
-        padding: 0 1rem;
-        font-size: 0.9rem;
-    }
-
-    /* Social login buttons */
-    .social-btn {
-        margin-bottom: 0.75rem !important;
-        border: 1px solid #ddd !important;
-        background-color: white !important;
-        color: #333 !important;
-        border-radius: 5px !important;
-        padding: 0.5rem 1rem !important;
-        display: flex !important;
-        align-items: center !important;
-        width: 100% !important;
-        cursor: pointer !important;
-    }
-
-    .social-btn img {
-        margin-right: 0.75rem;
-        height: 24px;
-        width: 24px;
-    }
-
-    /* Sign Up link */
     .signup-link {
         text-align: center;
-        margin: 1rem 0;
+        margin-top: 1rem;
         font-size: 0.9rem;
     }
 
@@ -161,88 +121,51 @@ def display_login():
         color: #10B981 !important;
         text-decoration: none !important;
         font-weight: 500 !important;
+        cursor: pointer;
     }
 
-    /* Make container narrower */
-    .login-container {
-    width: 350px !important;
-    margin: 2rem auto !important;
-    padding: 2rem !important;
-    background-color: #fff !important;
-    border: 1px solid #e5e5e5 !important;
-    border-radius: 10px !important;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+    .hidden-button {
+        display: none !important;
     }
     </style>
     """, unsafe_allow_html=True)
-    
-    # Display login error if any
-    if st.session_state.login_error:
-        st.error(st.session_state.login_error)
-        st.session_state.login_error = None
-    
-    # Create the centered container for login
+
+    # Login card
     with st.container():
-        st.markdown('<div class="login-container">', unsafe_allow_html=True)
-        
-        # Title
-        st.title("Hello There! Let's get to know each other ☺️")
-        
-        # Login form
+        st.markdown('<div class="login-wrapper">', unsafe_allow_html=True)
+
+        st.markdown("### Hello There! Let's get to know each other ☺️")
+
         with st.form("login_form", clear_on_submit=False):
-            #Username input
             username = st.text_input("Username", key="reg_username")
-            
-            # Password input
             password = st.text_input("Password", type="password", key="login_password")
-            
-            # Remember me checkbox (hidden by default, can be enabled)
-            # Use CSS to hide the checkbox
-            st.markdown('<style>.hide-checkbox { display: none; }</style>', unsafe_allow_html=True)
-            with st.container():
-                st.markdown('<div class="hide-checkbox">', unsafe_allow_html=True)
-                remember_me = st.checkbox("Remember me", key="remember_me", value=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-            
-            # Submit button styled as green "Continue" button
+            remember_me = st.checkbox("Remember me", value=True)
+
             st.markdown('<div class="continue-btn">', unsafe_allow_html=True)
             submit = st.form_submit_button("Continue")
             st.markdown('</div>', unsafe_allow_html=True)
-            
+
             if submit:
                 if not username or not password:
                     st.error("Please enter both username and password")
                 else:
-                    # Try to authenticate with username as username
                     login_result = auth_manager.authenticate_user(username, password)
                     if login_result["success"]:
-                        # Set session state
                         st.session_state.authenticated = True
-                        st.session_state.username      = username
-
-                            # ─── Create a fresh chat session in MongoDB ───
+                        st.session_state.username = username
                         new_id = create_chat(username, [], None)
                         st.session_state.current_chat_id = str(new_id)
-
-                        # ─── Initialize an empty chat history in session_state ───
                         st.session_state.chat_history = []
-
-                        # ─── Reload & sort all chats so newest (our “New Chat”) is first ───
                         st.session_state.available_chats = sorted(
                             get_chats_by_user(username),
                             key=lambda m: m["last_updated"],
                             reverse=True
                         )
-
-                        # ─── Force the sidebar to select the very first entry (index 0) ───
                         st.session_state.selected_chat_idx = 0
 
-
-
-                        # Set auth cookie if remember me is checked
                         if remember_me:
                             expiry = datetime.now() + timedelta(minutes=3)
-                            token  = auth_manager.generate_auth_token(username)
+                            token = auth_manager.generate_auth_token(username)
                             cookie_manager.set("auth_token", token, expires_at=expiry)
 
                         st.success("Login successful")
@@ -250,32 +173,24 @@ def display_login():
                     else:
                         st.error(login_result["message"])
 
-        st.markdown('</div>', unsafe_allow_html=True)
-        # Sign Up link
         st.markdown("""
-            <div class="signup-link">
+        <div class="signup-link">
             Don't have an account?
-            <a href="#" onclick="document.querySelector('button[kind=secondaryFormSubmit]').click();">Sign Up</a>
-            </div>
-            """, unsafe_allow_html=True)        
-        # Register button (hidden, triggered by the Sign Up link)
-        with st.container():
-            # Use container with custom CSS to hide the button
-            st.markdown('<style>.hide-button {display: none;}</style>', unsafe_allow_html=True)
-            st.markdown('<div class="hide-button">', unsafe_allow_html=True)
-            if st.button("Register", key="register_btn", type="secondary"):
-                st.session_state.registration = True
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Forgot password link (hidden, can be enabled)
-        with st.container():
-            st.markdown('<div class="hide-button">', unsafe_allow_html=True)
-            if st.button("Forgot password?", key="forgot_pwd", type="secondary", help="Reset your password"):
-                st.session_state.reset_password = True
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
-        
+            <a onclick="document.getElementById('hidden-register').click()">Sign Up</a>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Hidden register button to trigger Streamlit rerun
+        # This avoids relying on fragile `kind=secondaryFormSubmit`
+        if st.button("Register", key="register_btn", help="triggered by JS", type="secondary"):
+            st.session_state.registration = True
+            st.rerun()
+
+        st.markdown('<style>#hidden-register { display: none; }</style>', unsafe_allow_html=True)
+        st.markdown('<button id="hidden-register" class="hidden-button">Register</button>', unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
 
 def display_registration():
     # Reuse the same CSS from login page
