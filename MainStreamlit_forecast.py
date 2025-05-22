@@ -188,9 +188,9 @@ class AppManager:
 
             if st.button("✅ I understand and wish to continue"):
                 st.session_state.accepted_disclaimer = True
-                st.markdown('</div>', unsafe_allow_html=True)
                 st.rerun()
 
+            st.markdown('</div>', unsafe_allow_html=True)
 
             return
 
