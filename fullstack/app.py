@@ -134,7 +134,7 @@ def display_login():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         with st.container():
-            st.markdown('<div class="login-box">', unsafe_allow_html=True)
+            # st.markdown('<div class="login-box">', unsafe_allow_html=True)
 
             with st.form("login_form"):
                 username = st.text_input("Username")
@@ -174,7 +174,7 @@ def display_login():
                         else:
                             st.error(login_result["message"])
 
-            st.markdown('</div>', unsafe_allow_html=True)
+            # st.markdown('</div>', unsafe_allow_html=True)
 
     # Sign up section
     # Center "Don't have an account?" and Sign Up button together
@@ -184,8 +184,8 @@ def display_login():
         st.markdown('<div class="center-signup">', unsafe_allow_html=True)
         if st.button("Sign Up", key="signup_trigger"):
             st.session_state.registration = True
-            st.markdown('</div>', unsafe_allow_html=True)
             st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
     
 
