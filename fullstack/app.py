@@ -76,6 +76,11 @@ def display_login():
     # Custom CSS for styling elements similar to the image
     st.markdown("""
     <style>
+    /* Use Apple-style system font stack */
+    html, body, [class*="css"] {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    }
+
     /* Main title styling */
     h1 {
         font-size: 2.5rem !important;
@@ -83,7 +88,7 @@ def display_login():
         color: #FF0000 !important;
         margin-bottom: 2rem !important;
     }
-    
+
     /* Input field styling */
     .stTextInput>div>div>input {
         padding: 0.8rem !important;
@@ -91,7 +96,7 @@ def display_login():
         border-radius: 5px !important;
         border: 1px solid #ccc !important;
     }
-    
+
     /* Continue button styling */
     .continue-btn button {
         background-color: #10B981 !important;
@@ -103,7 +108,7 @@ def display_login():
         border: none !important;
         width: 100% !important;
     }
-    
+
     /* OR divider */
     .divider {
         display: flex;
@@ -111,18 +116,18 @@ def display_login():
         margin: 1.5rem 0;
         color: #888;
     }
-    
+
     .divider-line {
         flex-grow: 1;
         height: 1px;
         background-color: #ddd;
     }
-    
+
     .divider-text {
         padding: 0 1rem;
         font-size: 0.9rem;
     }
-    
+
     /* Social login buttons */
     .social-btn {
         margin-bottom: 0.75rem !important;
@@ -136,26 +141,26 @@ def display_login():
         width: 100% !important;
         cursor: pointer !important;
     }
-    
+
     .social-btn img {
         margin-right: 0.75rem;
         height: 24px;
         width: 24px;
     }
-    
+
     /* Sign Up link */
     .signup-link {
         text-align: center;
         margin: 1rem 0;
         font-size: 0.9rem;
     }
-    
+
     .signup-link a {
         color: #10B981 !important;
         text-decoration: none !important;
         font-weight: 500 !important;
     }
-    
+
     /* Make container narrower */
     .login-container {
         max-width: 400px !important;
