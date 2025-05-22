@@ -113,7 +113,7 @@ def display_login():
 
     .signup-label {
         text-align: center;
-        margin-top: 2rem;
+        margin-top: 1rem;
         font-size: 1.1rem;
         font-weight: 600;
     }
@@ -182,11 +182,11 @@ def display_login():
 
     # Sign up section
     # Center "Don't have an account?" and Sign Up button together
-    col1, col2, col3, col4, col5, col6, col7 = st.columns([1,1,1, 2, 1,1,1])
-    with col4:
+    col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns([1,1,1,1, 1, 1,1,1,1])
+    with col5:
         st.markdown('<div class="signup-label">Don\'t have an account?</div>', unsafe_allow_html=True)
         st.markdown('<div class="center-signup">', unsafe_allow_html=True)
-        if st.button("Sign Up", key="signup_trigger"):
+        if st.button("Sign Up", key="signup_trigger", use_container_width=True):
             st.session_state.registration = True
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
