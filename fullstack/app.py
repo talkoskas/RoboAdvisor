@@ -119,7 +119,7 @@ def display_login():
     }
 
     .center-signup {
-        text-align: center;
+        align: center;
         display: flex;
         justify-content: center;s
         margin-top: 1rem;
