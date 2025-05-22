@@ -121,7 +121,7 @@ def display_login():
     .center-signup {
         text-align: center;
         display: flex;
-        justify-content: center;
+        justify-content: center;s
         margin-top: 1rem;
     }
     </style>
