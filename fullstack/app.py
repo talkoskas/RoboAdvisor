@@ -250,10 +250,14 @@ def display_login():
                     else:
                         st.error(login_result["message"])
 
-        
+        st.markdown('</div>', unsafe_allow_html=True)
         # Sign Up link
-        st.markdown('<div class="signup-link">Don\'t have an account? <a href="#" onclick="document.querySelector(\'[data-testid=\'stForm\'] button[kind=secondaryFormSubmit]\').click();">Sign Up</a></div>', unsafe_allow_html=True)
-        
+        st.markdown("""
+            <div class="signup-link">
+            Don’t have an account?
+            <a href="#" onclick="document.querySelector('button[kind=secondaryFormSubmit]').click();">Sign Up</a>
+            </div>
+            """, unsafe_allow_html=True)        
         # Register button (hidden, triggered by the Sign Up link)
         with st.container():
             # Use container with custom CSS to hide the button
