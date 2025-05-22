@@ -75,7 +75,7 @@ def main():
         display_login()
 
 def display_login():
-    # Styling
+    # Custom CSS for styling
     st.markdown("""
     <style>
     html, body, [class*="css"] {
@@ -84,7 +84,7 @@ def display_login():
 
     .main-title {
         font-size: 2.2rem;
-        font-weight: 600;
+        font-weight: 700;
         color: #FF0000;
         text-align: center;
         margin-top: 2rem;
@@ -96,42 +96,35 @@ def display_login():
         padding: 2rem;
         border-radius: 12px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-        border: 1px solid #e5e5e5;
+        border: 2px solid #e5e5e5;
     }
 
-    .continue-btn button {
-        background-color: #10B981 !important;
-        color: white !important;
+    .continue-btn button,
+    .center-signup button {
+        background-color: white !important;
+        color: black !important;
         padding: 0.8rem !important;
         font-size: 1rem !important;
         font-weight: 500 !important;
-        border-radius: 5px !important;
-        border: none !important;
+        border-radius: 6px !important;
+        border: 2px solid #333 !important;
         width: 100% !important;
     }
 
-    .signup-link {
+    .signup-label {
         text-align: center;
-        margin-top: 1rem;
-        font-size: 0.9rem;
+        margin-top: 2rem;
+        font-size: 1.1rem;
+        font-weight: 600;
     }
 
-    .signup-link button {
-        background: none;
-        color: #10B981;
-        border: none;
-        font-weight: 500;
-        cursor: pointer;
-        font-size: 0.9rem;
-        text-decoration: underline;
+    .center-signup {
+        display: flex;
+        justify-content: center;
+        margin-top: 1rem;
     }
     </style>
     """, unsafe_allow_html=True)
-
-    # Error message
-    if st.session_state.get("login_error"):
-        st.error(st.session_state.login_error)
-        st.session_state.login_error = None
 
     # Title
     st.markdown('<div class="main-title">Hello There! Let\'s get to know each other ☺️</div>', unsafe_allow_html=True)
@@ -182,11 +175,13 @@ def display_login():
 
             st.markdown('</div>', unsafe_allow_html=True)
 
-            # Real clickable Sign Up button (styled like a link)
-            st.markdown('<div class="signup-link">Don\'t have an account?</div>', unsafe_allow_html=True)
-            if st.button("Sign Up", key="signup_trigger"):
-                st.session_state.registration = True
-                st.rerun()
+    # Sign up section
+    st.markdown('<div class="signup-label">Don\'t have an account?</div>', unsafe_allow_html=True)
+    st.markdown('<div class="center-signup">', unsafe_allow_html=True)
+    if st.button("Sign Up", key="signup_trigger"):
+        st.session_state.registration = True
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 
