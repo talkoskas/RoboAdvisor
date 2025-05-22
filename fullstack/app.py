@@ -165,7 +165,7 @@ def display_login():
 
     /* Make container narrower */
     .login-container {
-        max-width: 400px !important;
+        max-width: 200px !important;
         margin: 0 auto !important;
     }
     </style>
@@ -181,7 +181,7 @@ def display_login():
         st.markdown('<div class="login-container">', unsafe_allow_html=True)
         
         # Title
-        st.title("Hello There !")
+        st.title("Hello There! Let's get to know each other ☺️")
         
         # Login form
         with st.form("login_form", clear_on_submit=False):
