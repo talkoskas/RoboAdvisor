@@ -119,11 +119,15 @@ def display_login():
     }
 
     .center-signup {
-        text-align: center;
-        display: flex;
-        justify-content: center;
-        margin-top: 1rem;
+    display: flex;
+    justify-content: center;
+    margin-top: 1rem;
     }
+
+    .center-signup button {
+        width: 200px !important;  /* or any fixed size */
+        text-align: center !important;
+    }  
     </style>
     """, unsafe_allow_html=True)
 
@@ -134,7 +138,7 @@ def display_login():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         with st.container():
-            st.markdown('<div class="login-box">', unsafe_allow_html=True)
+            # st.markdown('<div class="login-box">', unsafe_allow_html=True)
 
             with st.form("login_form"):
                 username = st.text_input("Username")
@@ -174,15 +178,19 @@ def display_login():
                         else:
                             st.error(login_result["message"])
 
-            st.markdown('</div>', unsafe_allow_html=True)
+            # st.markdown('</div>', unsafe_allow_html=True)
 
     # Sign up section
-    st.markdown('<div class="signup-label">Don\'t have an account?</div>', unsafe_allow_html=True)
-    st.markdown('<div class="center-signup">', unsafe_allow_html=True)
-    if st.button("Sign Up", key="signup_trigger"):
-        st.session_state.registration = True
+    # Center "Don't have an account?" and Sign Up button together
+    col1, col2, col3, col4, col5, col6, col7 = st.columns([1,1,1, 2, 1,1,1])
+    with col5:
+        st.markdown('<div class="signup-label">Don\'t have an account?</div>', unsafe_allow_html=True)
+        st.markdown('<div class="center-signup">', unsafe_allow_html=True)
+        if st.button("Sign Up", key="signup_trigger"):
+            st.session_state.registration = True
+            st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
-        st.rerun()
+
     
 
 
@@ -311,8 +319,6 @@ def display_registration():
                         st.error(registration_result["message"])
 
         
-        # Login link
-        st.markdown('<div class="login-link">Already have an account? <a href="#" onclick="document.querySelector(\'[data-testid=\'stForm\'] button[kind=secondaryFormSubmit]\').click();">Sign In</a></div>', unsafe_allow_html=True)
         
         # Back button (hidden, triggered by the Sign In link)
         with st.container():
