@@ -177,12 +177,14 @@ def display_login():
             st.markdown('</div>', unsafe_allow_html=True)
 
     # Sign up section
-    st.markdown('<div class="signup-label">Don\'t have an account?</div>', unsafe_allow_html=True)
-    st.markdown('<div class="center-signup">', unsafe_allow_html=True)
-    if st.button("Sign Up", key="signup_trigger"):
-        st.session_state.registration = True
-        st.markdown('</div>', unsafe_allow_html=True)
-        st.rerun()
+    # Center "Don't have an account?" and Sign Up button together
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown('<div class="signup-label">Don\'t have an account?</div>', unsafe_allow_html=True)
+        if st.button("Sign Up", key="signup_trigger"):
+            st.session_state.registration = True
+            st.rerun()
+
     
 
 
