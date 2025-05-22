@@ -75,24 +75,25 @@ def main():
         display_login()
 
 def display_login():
-    # CSS styles
+    # Custom CSS styling
     st.markdown("""
     <style>
     html, body, [class*="css"] {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
     }
 
-    h1 {
-        font-size: 2.2rem !important;
-        font-weight: 600 !important;
-        color: #FF0000 !important;
-        text-align: center !important;
-        margin-bottom: 1.5rem !important;
+    .main-title {
+        font-size: 2.2rem;
+        font-weight: 600;
+        color: #FF0000;
+        text-align: center;
+        margin-top: 2rem;
+        margin-bottom: 1.5rem;
     }
 
-    .login-wrapper {
+    .login-box {
         max-width: 400px;
-        margin: 3rem auto;
+        margin: 0 auto;
         padding: 2rem;
         background-color: #fff;
         border: 1px solid #e5e5e5;
@@ -118,27 +119,29 @@ def display_login():
     }
 
     .signup-link a {
-        color: #10B981 !important;
-        text-decoration: none !important;
-        font-weight: 500 !important;
+        color: #10B981;
+        text-decoration: none;
+        font-weight: 500;
         cursor: pointer;
-    }
-
-    .hidden-button {
-        display: none !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-    # Login card
+    # Display error if exists
+    if st.session_state.get("login_error"):
+        st.error(st.session_state.login_error)
+        st.session_state.login_error = None
+
+    # Centered title
+    st.markdown('<div class="main-title">Hello There! Let\'s get to know each other ☺️</div>', unsafe_allow_html=True)
+
+    # Login form box
     with st.container():
-        st.markdown('<div class="login-wrapper">', unsafe_allow_html=True)
+        st.markdown('<div class="login-box">', unsafe_allow_html=True)
 
-        st.markdown("### Hello There! Let's get to know each other ☺️")
-
-        with st.form("login_form", clear_on_submit=False):
-            username = st.text_input("Username", key="reg_username")
-            password = st.text_input("Password", type="password", key="login_password")
+        with st.form("login_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
             remember_me = st.checkbox("Remember me", value=True)
 
             st.markdown('<div class="continue-btn">', unsafe_allow_html=True)
@@ -153,6 +156,8 @@ def display_login():
                     if login_result["success"]:
                         st.session_state.authenticated = True
                         st.session_state.username = username
+
+                        # Create session
                         new_id = create_chat(username, [], None)
                         st.session_state.current_chat_id = str(new_id)
                         st.session_state.chat_history = []
@@ -173,23 +178,18 @@ def display_login():
                     else:
                         st.error(login_result["message"])
 
-        st.markdown("""
-        <div class="signup-link">
-            Don't have an account?
-            <a onclick="document.getElementById('hidden-register').click()">Sign Up</a>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-        # Hidden register button to trigger Streamlit rerun
-        # This avoids relying on fragile `kind=secondaryFormSubmit`
-        if st.button("Register", key="register_btn", help="triggered by JS", type="secondary"):
+    # Signup link (uses a fake button to set a flag)
+    col1, col2, col3 = st.columns([2, 2, 2])
+    with col2:
+        st.markdown(
+            '<div class="signup-link">Don\'t have an account? <a href="#">Sign Up</a></div>',
+            unsafe_allow_html=True
+        )
+        if st.button(" ", key="signup_fake_btn", help="Hidden button to simulate link"):
             st.session_state.registration = True
             st.rerun()
-
-        st.markdown('<style>#hidden-register { display: none; }</style>', unsafe_allow_html=True)
-        st.markdown('<button id="hidden-register" class="hidden-button">Register</button>', unsafe_allow_html=True)
-
-        st.markdown('</div>', unsafe_allow_html=True)
 
 
 def display_registration():
