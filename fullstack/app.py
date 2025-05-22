@@ -75,7 +75,7 @@ def main():
         display_login()
 
 def display_login():
-    # Custom CSS styling
+    # Styling
     st.markdown("""
     <style>
     html, body, [class*="css"] {
@@ -92,13 +92,11 @@ def display_login():
     }
 
     .login-box {
-        max-width: 400px;
-        margin: 0 auto;
-        padding: 2rem;
         background-color: #fff;
-        border: 1px solid #e5e5e5;
+        padding: 2rem;
         border-radius: 12px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        border: 1px solid #e5e5e5;
     }
 
     .continue-btn button {
@@ -118,78 +116,78 @@ def display_login():
         font-size: 0.9rem;
     }
 
-    .signup-link a {
+    .signup-link button {
+        background: none;
         color: #10B981;
-        text-decoration: none;
+        border: none;
         font-weight: 500;
         cursor: pointer;
+        font-size: 0.9rem;
+        text-decoration: underline;
     }
     </style>
     """, unsafe_allow_html=True)
 
-    # Display error if exists
+    # Error message
     if st.session_state.get("login_error"):
         st.error(st.session_state.login_error)
         st.session_state.login_error = None
 
-    # Centered title
+    # Title
     st.markdown('<div class="main-title">Hello There! Let\'s get to know each other ☺️</div>', unsafe_allow_html=True)
 
-    # Login form box
-    with st.container():
-        st.markdown('<div class="login-box">', unsafe_allow_html=True)
+    # Centered login box using columns
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        with st.container():
+            st.markdown('<div class="login-box">', unsafe_allow_html=True)
 
-        with st.form("login_form"):
-            username = st.text_input("Username")
-            password = st.text_input("Password", type="password")
-            remember_me = st.checkbox("Remember me", value=True)
+            with st.form("login_form"):
+                username = st.text_input("Username")
+                password = st.text_input("Password", type="password")
+                remember_me = st.checkbox("Remember me", value=True)
 
-            st.markdown('<div class="continue-btn">', unsafe_allow_html=True)
-            submit = st.form_submit_button("Continue")
+                st.markdown('<div class="continue-btn">', unsafe_allow_html=True)
+                submit = st.form_submit_button("Continue")
+                st.markdown('</div>', unsafe_allow_html=True)
+
+                if submit:
+                    if not username or not password:
+                        st.error("Please enter both username and password")
+                    else:
+                        login_result = auth_manager.authenticate_user(username, password)
+                        if login_result["success"]:
+                            st.session_state.authenticated = True
+                            st.session_state.username = username
+
+                            new_id = create_chat(username, [], None)
+                            st.session_state.current_chat_id = str(new_id)
+                            st.session_state.chat_history = []
+                            st.session_state.available_chats = sorted(
+                                get_chats_by_user(username),
+                                key=lambda m: m["last_updated"],
+                                reverse=True
+                            )
+                            st.session_state.selected_chat_idx = 0
+
+                            if remember_me:
+                                expiry = datetime.now() + timedelta(minutes=3)
+                                token = auth_manager.generate_auth_token(username)
+                                cookie_manager.set("auth_token", token, expires_at=expiry)
+
+                            st.success("Login successful")
+                            st.rerun()
+                        else:
+                            st.error(login_result["message"])
+
             st.markdown('</div>', unsafe_allow_html=True)
 
-            if submit:
-                if not username or not password:
-                    st.error("Please enter both username and password")
-                else:
-                    login_result = auth_manager.authenticate_user(username, password)
-                    if login_result["success"]:
-                        st.session_state.authenticated = True
-                        st.session_state.username = username
+            # Real clickable Sign Up button (styled like a link)
+            st.markdown('<div class="signup-link">Don\'t have an account?</div>', unsafe_allow_html=True)
+            if st.button("Sign Up", key="signup_trigger"):
+                st.session_state.registration = True
+                st.rerun()
 
-                        # Create session
-                        new_id = create_chat(username, [], None)
-                        st.session_state.current_chat_id = str(new_id)
-                        st.session_state.chat_history = []
-                        st.session_state.available_chats = sorted(
-                            get_chats_by_user(username),
-                            key=lambda m: m["last_updated"],
-                            reverse=True
-                        )
-                        st.session_state.selected_chat_idx = 0
-
-                        if remember_me:
-                            expiry = datetime.now() + timedelta(minutes=3)
-                            token = auth_manager.generate_auth_token(username)
-                            cookie_manager.set("auth_token", token, expires_at=expiry)
-
-                        st.success("Login successful")
-                        st.rerun()
-                    else:
-                        st.error(login_result["message"])
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    # Signup link (uses a fake button to set a flag)
-    col1, col2, col3 = st.columns([2, 2, 2])
-    with col2:
-        st.markdown(
-            '<div class="signup-link">Don\'t have an account? <a href="#">Sign Up</a></div>',
-            unsafe_allow_html=True
-        )
-        if st.button(" ", key="signup_fake_btn", help="Hidden button to simulate link"):
-            st.session_state.registration = True
-            st.rerun()
 
 
 def display_registration():
