@@ -11,4 +11,19 @@ dependencies = [
     "requests>=2.32.3",
     "sqlalchemy>=2.0.40",
     "streamlit>=1.44.1",
+    "matplotlib>=3.10.3",
+    "datetime",  # part of stdlib, kept for completeness if needed by tooling
+    "yfinance",
+    "google.generativeai",
+    "openpyxl",
+    "plotly",
+    "emoji",
+    "tabulate",
+    "langchain",
+    "langchain-core",
+    "langchain-google-genai",
+    "google-generativeai",
+    "pyspellchecker",
+    "python-Levenshtein",
+    "pymongo"
 ]

@@ -16,3 +16,4 @@ except Exception as e:
 db = client["roboadvisor"]
 users_col = db["users"]
 reset_tokens_col = db["reset_tokens"]
+users_chat_col   = db["users_chat"]

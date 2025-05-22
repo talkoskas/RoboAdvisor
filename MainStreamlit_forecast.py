@@ -23,7 +23,9 @@ from langchain_core.messages import AIMessage, HumanMessage
 from intent_detector import IntentDetector
 from stock_data_handler import StockDataHandler
 from graph_generator import GraphGenerator
-
+from plotly.graph_objects import Figure
+from database_mongo import get_chat_by_id
+from plotly.io import from_json
 warnings.filterwarnings("ignore")
 
 # Global Configuration
@@ -149,7 +151,7 @@ class AppManager:
 
         - 🟢 `show me the graph of leumi`
         - 🟢 `compare leumi and poalim`
-        - 🟢 `show me all companies in industry Banks`
+        - 🟢 `show me all banks`
 
         The app will detect your intent and generate relevant insights and visuals.
         """)
@@ -184,138 +186,205 @@ class AppManager:
         st.title("🤖 Robo Advisor – Israeli Stock Market")
         st.sidebar.title("About")
         st.sidebar.info("This chatbot provides stock analysis using historical and forecasted data.")
+        # ─── Chat Sessions Switcher ─────────────────────────
+        st.sidebar.title("Your Chats")
+
+        # 1️⃣ Sort sessions newest→oldest so “New Chat” appears first
+        chat_metas = sorted(
+            st.session_state.get("available_chats", []),
+            key=lambda c: c["last_updated"],
+            reverse=True
+        )
+
+        # 2️⃣ Build a list of labels (first user prompt or “New Chat”)
+        chat_labels = []
+        for meta in chat_metas:
+            doc = get_chat_by_id(meta["_id"])
+            first = next(
+                (m.get("content", "") for m in doc.get("chat_history", []) if m.get("role") == "user"),
+                ""
+            )
+            chat_labels.append(first.strip() or "New Chat")
+
+        # 3️⃣ Render as a radio (segmented) control, defaulting to index 0
+        if chat_labels:
+            idx = st.sidebar.radio(
+                "Switch chats",
+                options=list(range(len(chat_labels))),
+                format_func=lambda i: chat_labels[i],
+                index=0,
+                key="selected_chat_idx"
+            )
+
+            selected_meta = chat_metas[idx]
+            if str(selected_meta["_id"]) != st.session_state.get("current_chat_id"):
+                # persist the chat we’re leaving
+                self.engine.save_chat()
+
+                # load the newly selected session
+                chat_doc = get_chat_by_id(selected_meta["_id"])
+                st.session_state.chat_history = []
+                for m in chat_doc.get("chat_history", []):
+                    # unify old vs new summary key
+                    main_text = m.get("content") or m.get("text", "") or ""
+                    # rebuild any graphs
+                    figs = []
+                    for fig_json in m.get("graphs", []):
+                        try:
+                            figs.append(from_json(fig_json))
+                        except:
+                            pass
+
+                    # deep analysis might live in its own field
+                    deep = m.get("deep_analysis")
+
+                    # skip truly empty placeholder messages
+                    if not (main_text.strip() or figs or deep):
+                        continue
+
+                    if m.get("role") == "user":
+                        st.session_state.chat_history.append(
+                            HumanMessage(content=main_text)
+                        )
+                    else:
+                        entry = {
+                            "role":      "assistant",
+                            "content":   main_text,
+                            "graphs":    figs
+                        }
+                        if deep:
+                            entry["deep_analysis"] = deep
+
+                        st.session_state.chat_history.append(entry)
 
 
+                # mark this as the active chat
+                st.session_state.current_chat_id = str(selected_meta["_id"])
+
+        # Default prompt buttons
         default_prompts = [
             "show me the graph of leumi",
             "compare leumi and poalim",
-            "show me all companies in industry Banks"
+            "show me all banks"
         ]
-
         cols = st.columns(len(default_prompts))
         selected_prompt = None
         for i, p in enumerate(default_prompts):
             if cols[i].button(p, use_container_width=True):
                 selected_prompt = p
 
-        for message in st.session_state.chat_history:
+        # Display chat history
+        # ── Display chat history ─────────────────────────────────────────────────
+        for msg_idx, message in enumerate(st.session_state.chat_history):
             if isinstance(message, HumanMessage):
                 with st.chat_message("user"):
                     st.write(message.content)
+
+            # our reconstructed assistant dicts
             elif isinstance(message, dict) and message.get("role") == "assistant":
                 with st.chat_message("assistant"):
-                    for graph in message.get("graphs", []):
-                        st.plotly_chart(graph, use_container_width=True, key=str(id(graph)))
-                    if message.get("text"):
-                        lang = st.session_state.get("language", "en")
+                    # 1️⃣ Render each Plotly figure with a stable key
+                    for fig_idx, fig in enumerate(message.get("graphs", [])):
+                        st.plotly_chart(
+                            fig,
+                            use_container_width=True,
+                            key=f"chat{msg_idx}_fig{fig_idx}"
+                        )
+
+                    # 2️⃣ Render the main summary text
+                    content = message.get("content")
+                    if content:
+                        lang  = st.session_state.get("language", "en")
                         align = "right" if lang == "he" else "left"
-                        dir = "rtl" if lang == "he" else "ltr"
+                        dir_  = "rtl"   if lang == "he" else "ltr"
                         st.markdown(
-                            f'<div dir="{dir}" style="text-align: {align}; font-size: 18px;">{message["text"]}</div>',
+                            f'<div dir="{dir_}" style="text-align: {align}; font-size: 18px;">'
+                            f'{content}</div>',
                             unsafe_allow_html=True
                         )
 
-                    if message.get("deep_analysis"):
+                    # 3️⃣ Render deeper analysis if present
+                    deep = message.get("deep_analysis")
+                    if deep:
                         st.markdown("### 🔍 Deeper Analysis")
-                        lang = st.session_state.get("language", "en")
+                        lang  = st.session_state.get("language", "en")
                         align = "right" if lang == "he" else "left"
-                        dir = "rtl" if lang == "he" else "ltr"
+                        dir_  = "rtl"   if lang == "he" else "ltr"
                         st.markdown(
-                            f'<div dir="{dir}" style="text-align: {align}; font-size: 18px;">{message["deep_analysis"]}</div>',
+                            f'<div dir="{dir_}" style="text-align: {align}; font-size: 18px;">'
+                            f'{deep}</div>',
                             unsafe_allow_html=True
                         )
 
+            # legacy AIMessage objects (fallback)
             elif isinstance(message, AIMessage):
                 with st.chat_message("assistant"):
                     st.write(message.content)
 
-        # Input
+
+        # User input
         manual_input = st.chat_input("What would you like to know?")
         prompt = selected_prompt or manual_input
 
-                # Deeper Analysis prompt and inline execution
-        if "deep_analysis_pending" in st.session_state:
-            pending = st.session_state["deep_analysis_pending"]
-            st.markdown("### 🔍 Would you like a deeper analysis?")
-            c1, c2 = st.columns([1,1])
-            if c1.button("🎨 Yes, show me!", key="yes_deeper", use_container_width=True):
-                with st.spinner("🔍 Generating deeper analysis..."):
-                    deep_result = self.engine._generate_deeper_analysis(
-                        pending["summary"],
-                        context_info=pending["context"]
-                    )
-                    # Display deeper analysis immediately
-                    with st.chat_message("assistant"):
-                        st.markdown("### 🔍 Deeper Analysis")
-                        lang = st.session_state.get("language", "en")
-                        align = "right" if lang == "he" else "left"
-                        dir = "rtl" if lang == "he" else "ltr"
-                        st.markdown(
-                            f'<div dir="{dir}" style="text-align: {align}; font-size: 18px;">{deep_result}</div>',
-                            unsafe_allow_html=True
-                        )
-                    # Add to history and clear pending
-                    st.session_state.chat_history.append({
-                        "role": "assistant",
-                        "deep_analysis": deep_result
-                    })
-                    del st.session_state["deep_analysis_pending"]
-            if c2.button("❌ No thanks", key="no_deeper", use_container_width=True):
-                del st.session_state["deep_analysis_pending"]
-
-        # Main chatbot flow
         if prompt:
+            # Language detection & append
             st.session_state["language"] = "he" if any('\u0590' <= c <= '\u05EA' for c in prompt) else "en"
             user_msg = HumanMessage(content=prompt)
             st.session_state.chat_history.append(user_msg)
-            with st.chat_message("user"):
-                st.write(prompt)
+            with st.chat_message("user"): st.write(prompt)
 
-            # Generate and show summary graphs/text
+            # Generate and display summary + graphs
             structured_response = self.engine.handle_input(prompt)
             st.session_state["last_structured_response"] = structured_response
-
             with st.chat_message("assistant"):
                 for i, graph in enumerate(structured_response.get("graphs", [])):
                     st.plotly_chart(graph, use_container_width=True, key=f"main_{i}_{uuid.uuid4()}")
                 if structured_response.get("text"):
                     lang = st.session_state.get("language", "en")
                     align = "right" if lang == "he" else "left"
-                    dir = "rtl" if lang == "he" else "ltr"
+                    dir_attr = "rtl" if lang == "he" else "ltr"
                     st.markdown(
-                        f'<div dir="{dir}" style="text-align: {align}; font-size: 18px;">{structured_response["text"]}</div>',
+                        f'<div dir="{dir_attr}" style="text-align: {align}; font-size: 18px;">{structured_response["text"]}</div>',
                         unsafe_allow_html=True
                     )
 
+            # Save summary to history
             st.session_state.chat_history.append({
                 "role": "assistant",
-                "text": structured_response.get("text", ""),
+                "content": structured_response.get("text", ""),
                 "graphs": structured_response.get("graphs", [])
             })
 
-            # Schedule deeper analysis if relevant
-            if structured_response.get("intent") in ["graph", "compare", "industry_values"]:
+            # Schedule deeper analysis after each valid intent
+            if structured_response.get("intent") in ["graph", "compare", "industry_values", "sector_comparison", "addition"]:
                 st.session_state["deep_analysis_pending"] = {
                     "summary": structured_response["text"],
                     "context": f"{structured_response.get('intent').capitalize()} Analysis"
                 }
 
-            # Ask for deeper analysis
-            if "deep_analysis_pending" in st.session_state:
-                if "deep_analysis_answered" not in st.session_state:
-                    st.markdown("### 🔍 Would you like a deeper analysis?")
-                    c1, c2 = st.columns([1,1])
-                    if c1.button("🎨 Yes, show me!", use_container_width=True):
-                        st.session_state["deep_analysis_triggered"] = True
-                        st.rerun()
-                    if c2.button("❌ No thanks", use_container_width=True):
-                        st.session_state.pop("deep_analysis_pending", None)
-                        st.session_state["deep_analysis_answered"] = True
-                else:
-                    # reset for next user interaction
-                    st.session_state.pop("deep_analysis_answered", None)
-
-            return
+        # Always show deeper-analysis buttons when pending
+        if "deep_analysis_pending" in st.session_state:
+            st.markdown("### 🔍 Would you like a deeper analysis?")
+            c1, c2 = st.columns([1,1])
+            if c1.button("🎨 Yes, show me!", use_container_width=True):
+                with st.spinner("🔍 Generating deeper analysis..."):
+                    pending = st.session_state.pop("deep_analysis_pending")
+                    deep_result = self.engine._generate_deeper_analysis(
+                        pending["summary"], context_info=pending["context"]
+                    )
+                    with st.chat_message("assistant"):
+                        st.markdown("### 🔍 Deeper Analysis")
+                        lang = st.session_state.get("language", "en")
+                        align = "right" if lang == "he" else "left"
+                        dir_attr = "rtl" if lang == "he" else "ltr"
+                        st.markdown(
+                            f'<div dir="{dir_attr}" style="text-align: {align}; font-size: 18px;">{deep_result}</div>',
+                            unsafe_allow_html=True
+                        )
+                    st.session_state.chat_history.append({"role": "assistant", "deep_analysis": deep_result})
+            if c2.button("❌ No thanks", use_container_width=True):
+                st.session_state.pop("deep_analysis_pending", None)
+                st.rerun()
 
 if __name__ == "__main__":
     app = AppManager()
