@@ -254,7 +254,7 @@ def display_login():
         # Sign Up link
         st.markdown("""
             <div class="signup-link">
-            Don’t have an account?
+            Don't have an account?
             <a href="#" onclick="document.querySelector('button[kind=secondaryFormSubmit]').click();">Sign Up</a>
             </div>
             """, unsafe_allow_html=True)        
