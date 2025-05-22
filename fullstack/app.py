@@ -165,8 +165,13 @@ def display_login():
 
     /* Make container narrower */
     .login-container {
-        max-width: 200px !important;
-        margin: 0 auto !important;
+    width: 350px !important;
+    margin: 2rem auto !important;
+    padding: 2rem !important;
+    background-color: #fff !important;
+    border: 1px solid #e5e5e5 !important;
+    border-radius: 10px !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
     }
     </style>
     """, unsafe_allow_html=True)
