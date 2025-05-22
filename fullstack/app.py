@@ -180,8 +180,9 @@ def display_login():
     st.markdown('<div class="center-signup">', unsafe_allow_html=True)
     if st.button("Sign Up", key="signup_trigger"):
         st.session_state.registration = True
+        st.markdown('</div>', unsafe_allow_html=True)
         st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+    
 
 
 
