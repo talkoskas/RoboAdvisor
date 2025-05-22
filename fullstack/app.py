@@ -122,7 +122,12 @@ def display_login():
     display: flex;
     justify-content: center;
     margin-top: 1rem;
-    }    
+    }
+
+    .center-signup button {
+        width: 200px !important;  /* or any fixed size */
+        text-align: center !important;
+    }  
     </style>
     """, unsafe_allow_html=True)
 
