@@ -311,8 +311,6 @@ def display_registration():
                         st.error(registration_result["message"])
 
         
-        # Login link
-        st.markdown('<div class="login-link">Already have an account? <a href="#" onclick="document.querySelector(\'[data-testid=\'stForm\'] button[kind=secondaryFormSubmit]\').click();">Sign In</a></div>', unsafe_allow_html=True)
         
         # Back button (hidden, triggered by the Sign In link)
         with st.container():
