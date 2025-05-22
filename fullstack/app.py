@@ -183,8 +183,8 @@ def display_login():
     # Sign up section
     # Center "Don't have an account?" and Sign Up button together
     col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns([1,1,1,1, 1, 1,1,1,1])
+    st.markdown('<div class="signup-label">Don\'t have an account?</div>', unsafe_allow_html=True)
     with col5:
-        st.markdown('<div class="signup-label">Don\'t have an account?</div>', unsafe_allow_html=True)
         st.markdown('<div class="center-signup">', unsafe_allow_html=True)
         if st.button("Sign Up", key="signup_trigger", use_container_width=True):
             st.session_state.registration = True
