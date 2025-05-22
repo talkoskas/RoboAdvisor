@@ -167,11 +167,30 @@ class AppManager:
         All outputs are based on historical data and model estimations and are provided for educational purposes only.
         """)
 
-            st.markdown("")
+            # st.markdown("")
+
+            # if st.button("✅ I understand and wish to continue"):
+            #     st.session_state.accepted_disclaimer = True
+            #     st.rerun()
+
+            # Add custom CSS for bold text and black border
+            st.markdown("""
+                <style>
+                    div.bold-border-btn > button {
+                        border: 2px solid black !important;
+                        font-weight: bold !important;
+                    }
+                </style>
+            """, unsafe_allow_html=True)
+
+            # Place your button inside the styled div
+            st.markdown('<div class="bold-border-btn">', unsafe_allow_html=True)
 
             if st.button("✅ I understand and wish to continue"):
                 st.session_state.accepted_disclaimer = True
+                st.markdown('</div>', unsafe_allow_html=True)
                 st.rerun()
+
 
             return
 
