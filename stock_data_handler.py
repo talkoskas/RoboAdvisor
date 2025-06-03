@@ -20,28 +20,25 @@ class StockDataHandler:
         self.hebrew_industry_mapping = dict(zip(sector_df["Industry"], sector_df["HebrewIndustryName"]))
 
     def extract_by_model(self, ticker: str, model: str, start_date, end_date):
-        if model not in self.model_paths and model != "ARIMA":
+        if model not in self.model_paths:
             raise ValueError(f"Unsupported model: {model}")
-
-        if model == "ARIMA":
-            return self._load_arima_data(ticker, start_date, end_date)
 
         df = pd.read_csv(self.model_paths[model])
 
         if model in ["LSTM", "GRU"]:
-            return self._filter_stock_data(df, ticker, start_date, end_date)
+            return self._filter_stock_data_nn(df, ticker, start_date, end_date)
         elif model in ["XGBoost", "LightGBM"]:
             company_data = df[df["Stock"] == ticker].iloc[0]
-            return self._process_model_data(company_data, start_date)
+            return self._process_model_data_boosting(company_data, start_date)
 
         raise ValueError(f"Unhandled model: {model}")
 
-    def _filter_stock_data(self, df, ticker, start_date, end_date):
+    def _filter_stock_data_nn(self, df, ticker, start_date, end_date):
         df["Date"] = pd.to_datetime(df["Date"], dayfirst=True)
         ticker = ticker if ticker.endswith(".TA") else f"{ticker}.TA"
         return df[(df["Ticker"] == ticker) & (df["Date"] >= start_date) & (df["Date"] <= end_date)]
 
-    def _process_model_data(self, company_data, start_date):
+    def _process_model_data_boosting(self, company_data, start_date):
         company_data["y_test"] = ast.literal_eval(company_data["y_test"])
         company_data["y_pred"] = ast.literal_eval(company_data["y_pred"])
 
