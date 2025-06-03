@@ -103,12 +103,17 @@ class StockDataHandler:
         for t in tickers:
             full_ticker = f"{t}.TA"
             try:
-                data = self.extract_by_model(full_ticker, "LSTM", start_date, end_date)
+                model = best_models.loc[best_models["Company"] == full_ticker, "Model"].values[0]
+                data = self.extract_by_model(full_ticker, model, start_date, end_date)
                 if not data.empty:
+                    company_name = reverse_map.get(t, t)
+                    hebrew_name = self.hebrew_name_mapping.get(t, company_name)
                     result.append(pd.DataFrame({
                         "Ticker": full_ticker,
                         "Date": data["Date"],
-                        "Actual": data["Actual"]
+                        "Actual": data["Actual"],
+                        "Company": company_name,
+                        "HebrewCompanyName": hebrew_name
                     }))
             except Exception:
                 continue
