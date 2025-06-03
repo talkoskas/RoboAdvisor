@@ -126,7 +126,7 @@ class IntentDetector:
             if self.normalize_text(key) in normalized
         ]
 
-        # 6️⃣ Additive logic → NEW “addition” intent
+        # 6️⃣ Additive logic → check if new prompt is related to the previous one(wants to add company/industry to the prior prompt)
         additive_keywords = {
             "add", "also", "with", "vs", "versus", "too", "as well",
             "along", "plus", "include", "including", "alongside", "next to",
