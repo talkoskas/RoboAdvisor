@@ -203,37 +203,6 @@ class IntentDetector:
 
 
 
-
-
-        # Token-based compare/graph fallback
-        if len(total_companies) >= 2:
-            st.session_state.last_companies = total_companies
-            return {"intent": "compare", "companies": total_companies}
-        if len(total_companies) == 1:
-            st.session_state.last_company = total_companies[0]
-            return {"intent": "graph", "company": total_companies[0]}
-
-        # 4️⃣ Keyword-only fallback using your existing extractors
-        if self.fuzzy_contains_keyword(ui, self.intent_keywords["industry_values"]):
-            return {
-                "intent": "industry_values",
-                "industry": self.extract_industry_name(raw)
-            }
-        if self.fuzzy_contains_keyword(ui, self.intent_keywords["compare"]):
-            return {
-                "intent": "compare",
-                "companies": self.extract_company_names(raw)
-            }
-        if self.fuzzy_contains_keyword(ui, self.intent_keywords["graph"]):
-            return {
-                "intent": "graph",
-                "company": self.extract_company_name(raw)
-            }
-
-        # 5️⃣ Finally, default to “text”
-        return {"intent": "text"}
-
-
     def extract_industry_name(self, user_input: str) -> str:
         for keyword in self.intent_keywords["industry_values"]:
             if keyword in user_input:
