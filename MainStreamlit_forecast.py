@@ -89,6 +89,7 @@ class AppManager:
 
     def run(self):
         def get_clean_chat_history():
+            #load the chat history
             lines = []
             for m in st.session_state.chat_history:
                 if isinstance(m, HumanMessage):
