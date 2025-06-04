@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import auth_manager
 import user_management
-import social_auth
 import utils
 # fullstack/app.py
 from database_mongo import create_chat, get_chats_by_user
@@ -504,65 +503,6 @@ def display_main_app():
         
         st.rerun()
     
-# Handle OAuth callbacks
-params = st.query_params
-if "code" in params and "state" in params:
-    # Social login callback processing
-    state = params["state"]
-    code = params["code"]
-    
-    # Determine provider from state
-    if state.startswith("google"):
-        user_info = social_auth.handle_google_callback(code)
-        if user_info and "email" in user_info:
-            # Create/login user
-            login_result = user_management.social_login(user_info["email"], "google")
-            if login_result["success"]:
-                st.session_state.authenticated = True
-                st.session_state.username = login_result["username"]
-                # ─── Load existing chats for sidebar selection ───
-                st.session_state.available_chats = get_chats_by_user(username)
-
-                # ─── Create a fresh chat session in MongoDB ───
-                new_id = create_chat(username, [], None)
-                st.session_state.current_chat_id = str(new_id)
-
-                # ─── Initialize an empty chat history in session_state ───
-                st.session_state.chat_history = []
-
-                # Clear URL parameters
-                params.clear()
-                st.rerun()
-            else:
-                st.session_state.login_error = login_result["message"]
-                params.clear()
-                st.rerun()
-    
-    elif state.startswith("facebook"):
-        user_info = social_auth.handle_facebook_callback(code)
-        if user_info and "email" in user_info:
-            # Create/login user
-            login_result = user_management.social_login(user_info["email"], "facebook")
-            if login_result["success"]:
-                st.session_state.authenticated = True
-                st.session_state.username = login_result["username"]
-                # ─── Load existing chats for sidebar selection ───
-                st.session_state.available_chats = get_chats_by_user(username)
-
-                # ─── Create a fresh chat session in MongoDB ───
-                new_id = create_chat(username, [], None)
-                st.session_state.current_chat_id = str(new_id)
-
-                # ─── Initialize an empty chat history in session_state ───
-                st.session_state.chat_history = []
-
-                # Clear URL parameters
-                params.clear()
-                st.rerun()
-            else:
-                st.session_state.login_error = login_result["message"]
-                params.clear()
-                st.rerun()
 
 # Run the app
 if __name__ == "__main__":
