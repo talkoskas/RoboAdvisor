@@ -168,8 +168,10 @@ class ChatbotEngine:
             f"📎 Sector Names:\n{sectors_text}\n\n"
 
             f"⛔ Never hallucinate new tickers or sector names.\n"
-            f"If you are given a prompt in the Hebrew language, you must answer in Hebrew in that response only, unless explicitly asked in another language.\n"
-            f"If needed to compare mutliple stocks, with some have typos in names, first find the correct tickers and then compare them"
+            f"If a company/sector isn't recognized, suggest the closest match and ask for confirmation.\n"
+            f"Wait for the user to reply 'yes' before proceeding with correction.\n"
+            f"If you are given a prompt in the Hebrew language, you must answer in Hebrew in that response only, unless explicitly asked in another language"
+
 
             ),
             MessagesPlaceholder(variable_name="chat_history"),
