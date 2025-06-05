@@ -366,8 +366,8 @@ class ChatbotEngine:
         ).to_messages()
         response = self.llm.invoke(messages)
 
-        # if hasattr(response, "tool_calls") and response.tool_calls:
-        #     return self._handle_tool_call(response)
+        if hasattr(response, "tool_calls") and response.tool_calls:
+            return self.handle_input(response)
 
         output = {"text": response.content, "intent": "fallback", "raw_input": user_input}
         self.save_chat()
