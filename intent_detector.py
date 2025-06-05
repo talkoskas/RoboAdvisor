@@ -103,9 +103,12 @@ class IntentDetector:
         for heb, eng in self.hebrew_to_english_industry.items():
             user_input = user_input.replace(heb, eng)
 
+        print("Here in intent_detector 1 : ", user_input)
         # 2️⃣ Normalize once
         normalized          = self.normalize_text(user_input)     # e.g. "rami levi"
         normalized_no_space = normalized.replace(" ", "")        # e.g. "ramilevi"
+
+        print("Here in intent_detector 2 : ", normalized_no_space)
 
         # 3️⃣ Company‐name substring matches (highest priority)
         matched_companies = []
