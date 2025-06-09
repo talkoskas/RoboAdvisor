@@ -14,7 +14,8 @@ class IntentDetector:
         self.company_names = list(ticker_mapping.keys())
         self.intent_keywords = {
             "industry_values": ["actual values", "industry", "companies in industry", "all"],
-            "compare": ["compare", "comparison", "between", "difference between", "versus", "vs", "with", "and", "&", ","],
+            "compare": ["compare", "comparison", "between", "difference between", "versus", "vs", "with", "and", "&", ",", "השוואה", "להשוות", "תשווה", "מול", "ו", "וגם", "גם", "לעומת", "בנוסף",
+                        "תשווה מול", "תשווה עם", "השווה בין", "תשווה את", "תשווה ל", "תשווה למול"],
             "graph": ["chart of", "plot of", "graph of", "graph", "plot", "visualize", "chart"]
         }
 
@@ -103,12 +104,10 @@ class IntentDetector:
         for heb, eng in self.hebrew_to_english_industry.items():
             user_input = user_input.replace(heb, eng)
 
-        print("Here in intent_detector 1 : ", user_input)
         # 2️⃣ Normalize once
         normalized          = self.normalize_text(user_input)     # e.g. "rami levi"
         normalized_no_space = normalized.replace(" ", "")        # e.g. "ramilevi"
 
-        print("Here in intent_detector 2 : ", normalized_no_space)
 
         # 3️⃣ Company‐name substring matches (highest priority)
         matched_companies = []
@@ -170,6 +169,14 @@ class IntentDetector:
         comps = list(dict.fromkeys(matched_companies))
         inds  = list(dict.fromkeys(matched_industries))
 
+        if self.fuzzy_contains_keyword(normalized, self.intent_keywords["compare"]):
+            try:
+                fuzzy_companies = self.extract_company_names(user_input)
+                st.session_state.last_companies = fuzzy_companies
+                return {"intent": "compare", "companies": fuzzy_companies}
+            except:
+                pass
+
         if len(comps) >= 2:
             st.session_state.last_companies = comps
             return {"intent": "compare", "companies": comps}
@@ -177,6 +184,7 @@ class IntentDetector:
             st.session_state.last_company = comps[0]
             st.session_state.last_companies = [comps[0]] 
             return {"intent": "graph", "company": comps[0]}
+
         if len(inds) >= 2:
             st.session_state.last_industries = inds
             return {"intent": "sector_comparison", "industries": inds}
@@ -229,16 +237,26 @@ class IntentDetector:
             user_input = user_input.replace(delim, ",")
         companies = [c.strip() for c in user_input.split(",") if c.strip()]
         matched = []
+        unmatched = []
+
         for c in companies:
-            c = self.clean_name(c)
+            c_clean = self.clean_name(c)
             try:
-                matched_name = self.fuzzy_match_company(c)
+                matched_name = self.fuzzy_match_company(c_clean)
                 matched.append(matched_name)
             except ValueError:
-                continue
+                unmatched.append(c_clean)
+
+        # 🔧 Rescue unmatched companies using closest suggestions
+        for c in unmatched:
+            suggestions = self.suggest_closest_matches(c, self.company_names)
+            if suggestions:
+                matched.append(suggestions[0])
+
         if len(matched) < 2:
             raise ValueError("At least two valid companies required.")
-        return list(set(matched))
+        return list(dict.fromkeys(matched))
+
 
     def resolve_ticker(self, company_or_ticker: str) -> str:
         key = company_or_ticker.strip().upper()
