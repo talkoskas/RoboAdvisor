@@ -14,8 +14,8 @@ class IntentDetector:
         self.company_names = list(ticker_mapping.keys())
         self.intent_keywords = {
             "industry_values": ["actual values", "industry", "companies in industry", "all"],
-            "compare": ["compare", "comparison", "between", "difference between", "versus", "vs", "with", "and", "&", ",", "השוואה", "להשוות", "תשווה", "מול", "ו", "וגם", "גם", "לעומת", "בנוסף",
-                        "תשווה מול", "תשווה עם", "השווה בין", "תשווה את", "תשווה ל", "תשווה למול"],
+            "compare": ["compare", "comparison", "between", "difference between", "versus", "vs", "with", "and", "&", ",", "השוואה", "להשוות את", "מול", "ו", "וגם", "גם", "לעומת", "בנוסף",
+                        "תשווה מול", "תשווה עם", "תשווה בין", "השווה בין", "תשווה את", "תשווה ל", "תשווה למול"],
             "graph": ["chart of", "plot of", "graph of", "graph", "plot", "visualize", "chart"]
         }
 
@@ -45,7 +45,9 @@ class IntentDetector:
                 eng = str(row["Industry"]).strip()
                 if heb:
                     self.hebrew_to_english_industry[heb] = eng
-
+        # Extend fuzzy matching with Hebrew names
+        hebrew_names = df_companies["HebrewCompanyName"].dropna().astype(str).str.strip().tolist()
+        self.company_names += hebrew_names
     def clean_name(self, name: str) -> str:
         return name.strip().translate(str.maketrans('', '', string.punctuation)).upper()
 
@@ -79,11 +81,21 @@ class IntentDetector:
         all_names = list(set(self.company_names + list(self.ticker_mapping.values())))
         close_matches = get_close_matches(name, all_names, n=1, cutoff=0.8)
         if close_matches:
-            return close_matches[0]
+            match = close_matches[0]
+            # 👇 If it's Hebrew, convert it to the English name
+            if match in self.hebrew_to_english_company:
+                return self.hebrew_to_english_company[match]
+            return match
+
         corrected = self.spell.correction(name.lower()).upper()
         close_matches = get_close_matches(corrected, all_names, n=1, cutoff=0.8)
         if close_matches:
-            return close_matches[0]
+            match = close_matches[0]
+            # 👇 If it's Hebrew, convert it to the English name
+            if match in self.hebrew_to_english_company:
+                return self.hebrew_to_english_company[match]
+            return match
+
         suggestions = self.suggest_closest_matches(name, self.company_names)
         raise ValueError(f"Company '{name}' not found. Did you mean: {', '.join(suggestions)}?")
 
@@ -99,6 +111,41 @@ class IntentDetector:
 
     def detect(self, user_input: str, last_intent: str = None) -> dict:
         # 1️⃣ Hebrew → English
+        tokenized_input = user_input.split()
+        keyword_index = None
+
+        # Find index of the first compare keyword (supports 1- and 2-token matches)
+        for i in range(len(tokenized_input)):
+            one = tokenized_input[i]
+            two = f"{tokenized_input[i]} {tokenized_input[i+1]}" if i + 1 < len(tokenized_input) else None
+
+            if one in self.intent_keywords["compare"]:
+                keyword_index = i + 1
+                break
+            if two and two in self.intent_keywords["compare"]:
+                keyword_index = i + 2
+                break
+
+        # ✅ Only process tokens AFTER the matched compare keyword
+        if keyword_index is not None:
+            tail_tokens = tokenized_input[keyword_index:]
+
+            for token in tail_tokens:
+                token_clean = token.strip(" ,.()")
+                # Skip already translated or English tokens
+                if token_clean in self.hebrew_to_english_company:
+                    continue
+                if re.search(r"[A-Za-z]", token_clean):
+                    continue
+
+                suggestions = self.suggest_closest_matches(token_clean, list(self.hebrew_to_english_company.keys()))
+                if suggestions:
+                    best = suggestions[0]
+                    replacement = self.hebrew_to_english_company[best]
+                    # Replace only exact occurrences
+                    user_input = re.sub(rf"\b{re.escape(token_clean)}\b", replacement, user_input)
+
+
         for heb, eng in self.hebrew_to_english_company.items():
             user_input = user_input.replace(heb, eng)
         for heb, eng in self.hebrew_to_english_industry.items():
@@ -168,7 +215,8 @@ class IntentDetector:
         # 7️⃣ Decide intent purely by count of substring‐matches (fresh logic)
         comps = list(dict.fromkeys(matched_companies))
         inds  = list(dict.fromkeys(matched_industries))
-
+        print(normalized)
+        print(self.intent_keywords["compare"])
         if self.fuzzy_contains_keyword(normalized, self.intent_keywords["compare"]):
             try:
                 fuzzy_companies = self.extract_company_names(user_input)
@@ -250,8 +298,15 @@ class IntentDetector:
         # 🔧 Rescue unmatched companies using closest suggestions
         for c in unmatched:
             suggestions = self.suggest_closest_matches(c, self.company_names)
+            print(c)
+            print(suggestions)
             if suggestions:
-                matched.append(suggestions[0])
+                match = suggestions[0]
+                if match in self.hebrew_to_english_company:
+                    matched.append(self.hebrew_to_english_company[match])
+                else:
+                    matched.append(match)
+
 
         if len(matched) < 2:
             raise ValueError("At least two valid companies required.")
