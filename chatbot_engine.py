@@ -695,7 +695,7 @@ class ChatbotEngine:
          תשתמש בידע חיצוני – אל תעבוד רק על בסיס הטקסט שלפניך. שמור על מבנה מאורגן:
 
         ### מה יש לנו (יסודות):
-        - הסבר בסיסי על שם המניה.
+        - הסבר בסיסי על שם המניה. תחקור מה החברות עושות ותציג במשפט אחד(משפט לכל סקטור המכיל חברות מהפרומפט)
         - מהו המודל החוזה.
         - מהי משמעות הערכים: אמת, חיזוי, תחזית.
 
@@ -703,6 +703,7 @@ class ChatbotEngine:
         - מה המגמה הכללית?
         - האם יש האטה בקצב הצמיחה?
         - האם המודל שומרני או אופטימי?
+        - במקרה ויש יותר מחברה אחת, תייצר השוואה מסודרת
 
         ### סיכונים שיש לקחת בחשבון:
         - אילוצים של המודל.
@@ -736,8 +737,8 @@ class ChatbotEngine:
 
         # 🔁 ENGLISH: default
         prompt_text = (
-            "You are a financial analyst. Based on the given summary, values, and context, "
-            "write a **deeper analysis** including patterns, anomalies, risks, and insights. "
+            "You are a financial analyst. firstm explain the companies, what they do in general(1 sentance) and about the model. Based on the given summary, values, and context, "
+            "write a **deeper analysis** including patterns, anomalies, risks, comparisons(if more than 1 company involved) and insights. "
             "Explain trends and make it educational for a beginner-level audience.\n\n"
             f"Context:\n{context_info}\n\nSummary:\n{summary}"
         )
