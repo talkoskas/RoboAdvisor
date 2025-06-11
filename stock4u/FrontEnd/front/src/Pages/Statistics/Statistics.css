@@ -1,0 +1,26 @@
+.App {
+    text-align: center;
+  }
+.charts-sections {
+    justify-content: center;
+    display: inline;
+    width: 70%;
+    height: 35%;
+}
+
+.charts-sections-flex {
+    display: flex;
+    width: 250px;
+}
+
+.graphs {
+    height: 500px;
+}
+
+AgChartsReact {
+    max-height: 250px;
+}
+
+.ag-chart-wrapper {
+    overflow: visible !important;
+}

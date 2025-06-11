@@ -1,0 +1,15 @@
+.Profile-Header{
+    float: left;
+    /* margin-left: 50px; */
+}
+
+.Card {
+    padding: 10px;
+}
+
+
+.LeaderBoard {
+    padding: 0 20px;
+    display: flex;
+    justify-content: center
+}

@@ -1,0 +1,22 @@
+.Profile-Header{
+    float: left;
+    /* margin-left: 50px; */
+}
+
+.Card {
+    padding: 10px;
+}
+
+.Difference {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.Dialog-Content {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding: 30px;
+    width: 350px;
+}
