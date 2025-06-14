@@ -103,11 +103,16 @@ class IntentDetector:
         name = name.lower().strip()
         name = re.sub(r"[-_:,&]", " ", name)
         name = re.sub(r"\s+", " ", name).strip()
+        print(name)
         for industry_key, canonical in self.industry_mapping.items():
-            if name in industry_key:
+            print(industry_key)
+            print(canonical)
+            if name in industry_key or industry_key in name:
                 return canonical
+
         suggestions = self.suggest_closest_matches(name, list(self.industry_mapping.keys()))
         raise ValueError(f"Industry '{name}' not recognized. Did you mean: {', '.join(suggestions)}?")
+
 
     def detect(self, user_input: str, last_intent: str = None) -> dict:
         # 1️⃣ Hebrew → English
@@ -146,8 +151,25 @@ class IntentDetector:
                     user_input = re.sub(rf"\b{re.escape(token_clean)}\b", replacement, user_input)
 
 
+        # Only translate company names AFTER the fuzzy-match step (keyword-index found)
+        if keyword_index is not None:
+            tail_tokens = tokenized_input[keyword_index:]
+            for token in tail_tokens:
+                token_clean = token.strip(" ,.()")
+                if token_clean in self.hebrew_to_english_company:
+                    continue
+                if re.search(r"[A-Za-z]", token_clean):
+                    continue
+                suggestions = self.suggest_closest_matches(token_clean, list(self.hebrew_to_english_company.keys()))
+                if suggestions:
+                    best = suggestions[0]
+                    replacement = self.hebrew_to_english_company[best]
+                    user_input = re.sub(rf"\b{re.escape(token_clean)}\b", replacement, user_input)
+
+        # Now safely replace all known exact company names (won't corrupt industry names)
         for heb, eng in self.hebrew_to_english_company.items():
-            user_input = user_input.replace(heb, eng)
+            user_input = re.sub(rf"\b{re.escape(heb)}\b", eng, user_input)
+
         for heb, eng in self.hebrew_to_english_industry.items():
             user_input = user_input.replace(heb, eng)
 
@@ -216,7 +238,6 @@ class IntentDetector:
         comps = list(dict.fromkeys(matched_companies))
         inds  = list(dict.fromkeys(matched_industries))
         print(normalized)
-        print(self.intent_keywords["compare"])
         if self.fuzzy_contains_keyword(normalized, self.intent_keywords["compare"]):
             try:
                 fuzzy_companies = self.extract_company_names(user_input)
@@ -224,7 +245,12 @@ class IntentDetector:
                 return {"intent": "compare", "companies": fuzzy_companies}
             except:
                 pass
-
+        if len(inds) >= 2:
+            st.session_state.last_industries = inds
+            return {"intent": "sector_comparison", "industries": inds}
+        if len(inds) == 1:
+            st.session_state.last_industry = inds[0]
+            return {"intent": "industry_values", "industry": inds[0]}
         if len(comps) >= 2:
             st.session_state.last_companies = comps
             return {"intent": "compare", "companies": comps}
@@ -233,12 +259,6 @@ class IntentDetector:
             st.session_state.last_companies = [comps[0]] 
             return {"intent": "graph", "company": comps[0]}
 
-        if len(inds) >= 2:
-            st.session_state.last_industries = inds
-            return {"intent": "sector_comparison", "industries": inds}
-        if len(inds) == 1:
-            st.session_state.last_industry = inds[0]
-            return {"intent": "industry_values", "industry": inds[0]}
 
         # 8️⃣ Fallback to fuzzy/keyword logic
         if self.fuzzy_contains_keyword(normalized, self.intent_keywords["compare"]):
@@ -266,8 +286,11 @@ class IntentDetector:
         for keyword in self.intent_keywords["industry_values"]:
             if keyword in user_input:
                 after = user_input.split(keyword)[-1].strip()
-                return self.fuzzy_match_industry(after)
-        raise ValueError("Could not recognize the industry name.")
+                if after:
+                    return self.fuzzy_match_industry(after)
+        # Fallback: last token
+        return self.fuzzy_match_industry(user_input.split()[-1])
+
 
     def extract_company_name(self, user_input: str) -> str:
         for keyword in self.intent_keywords["graph"]:
