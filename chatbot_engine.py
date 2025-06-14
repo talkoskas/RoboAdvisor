@@ -241,6 +241,7 @@ class ChatbotEngine:
 
 
     def handle_input(self, user_input: str):
+        print(user_input)
         if "chat_history" not in st.session_state:
             st.session_state.chat_history = []
 
@@ -288,7 +289,7 @@ class ChatbotEngine:
             comps       = detected.get("companies", None)
             industries  = detected.get("industries", None)
             st.session_state["last_intent"] = intent
-
+            print(intent)
             # ── 0️⃣ Handle “addition” intent ───────────────────────────────────────
             if intent == "addition":
                 # • company‐level addition
