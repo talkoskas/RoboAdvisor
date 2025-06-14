@@ -97,7 +97,8 @@ class StockDataHandler:
         df.rename(columns={"Symbol": "Ticker"}, inplace=True)
         industry_companies = df[df["Industry"].str.lower() == industry.lower()]
         tickers = industry_companies["Ticker"].tolist()
-
+        best_models = pd.read_csv(self.best_model_path)
+        reverse_map = {v: k for k, v in self.ticker_mapping.items()}
         result = []
 
         for t in tickers:
