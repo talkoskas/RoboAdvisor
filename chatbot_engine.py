@@ -32,8 +32,24 @@ SECTORS_DF_PATH = os.path.join(BASE_DIR, "sectors_df.csv")
 comp_text = pd.read_excel(MAPPING_FILE_PATH).to_markdown(index=False)
 sectors_text = pd.read_csv(SECTORS_DF_PATH)[["Industry"]].to_markdown(index=False)
 def detect_language(text):
+    """Detects the language of a given text based on character range.
+
+    Args:
+        text (str): The input string to analyze.
+
+    Returns:
+        str: "he" if the text contains Hebrew characters, otherwise "en".
+    """
     return "he" if any('֐' <= c <= 'ת' for c in text) else "en"
 def get_llm_instance(tools=None):
+    """Initializes and returns a configured Gemini language model instance.
+
+    Args:
+        tools (list, optional): A list of function tools for enabling tool calling. Defaults to None.
+
+    Returns:
+        ChatGoogleGenerativeAI: An instance of the Gemini 2.0 Flash Lite model with specified configuration.
+    """
     return ChatGoogleGenerativeAI(
         model="gemini-2.0-flash-lite",
         stream=True,
@@ -46,13 +62,60 @@ def get_llm_instance(tools=None):
         }
     )
 def get_common_dates(frames):
+    """Finds the common dates across multiple DataFrames.
+
+    Args:
+        frames (list of pd.DataFrame): A list of DataFrames, each containing a "Date" column.
+
+    Returns:
+        list: A sorted list of dates that are common to all non-empty DataFrames.
+    """
     date_sets = [set(df["Date"]) for df in frames if not df.empty]
     return sorted(set.intersection(*date_sets)) if date_sets else []
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 class ChatbotEngine:
+    """A stock analysis chatbot engine for the Israeli stock market.
+
+    This class manages the logic behind interpreting user queries, selecting appropriate tools 
+    (e.g., graph generation, company/sector comparisons), and orchestrating responses using 
+    a Gemini language model with function-calling capabilities.
+
+    It integrates a data handler, graph generator, and intent detector, and maintains memory 
+    for coherent multi-turn conversations. The engine also defines structured tools with 
+    schema-based parameters for robust function dispatching.
+
+    Attributes:
+        tools (list): Definitions of supported function-calling tools (graph, compare, etc.).
+        llm (ChatGoogleGenerativeAI): Gemini model instance with streaming and auto tool-calling.
+        memory (ConversationBufferMemory): Conversation history for contextual continuity.
+        valid_entities_text (str): List of valid company and ticker names for guiding prompt behavior.
+        prompt (ChatPromptTemplate): Structured prompt combining system rules and conversation memory.
+        chain (Runnable): Pipeline linking prompt, LLM, and output parsing.
+        data_handler: Backend data access layer for stocks and sectors.
+        graph_generator: Generates Plotly graphs for actual, predicted, and forecasted values.
+        intent_detector: Extracts user intent from natural language prompts.
+    """
     def __init__(self, data_handler, graph_generator, intent_detector):
+        """Initializes the ChatbotEngine with tool definitions, language model, memory, and prompt template.
+
+        Args:
+            data_handler: Instance responsible for loading and processing stock and sector data.
+            graph_generator: Instance used to generate Plotly graphs for stock analysis.
+            intent_detector: Instance for detecting user intent based on natural language input.
+    
+        Attributes:
+            tools (list): A list of function-calling tool definitions (graph, compare, industry_values, sector_comparison).
+            llm (ChatGoogleGenerativeAI): Gemini language model configured for tool-calling and conversational reasoning.
+            memory (ConversationBufferMemory): Conversational memory to preserve context across user messages.
+            valid_entities_text (str): A formatted list of all valid company names and tickers for prompt guidance.
+            prompt (ChatPromptTemplate): The structured prompt guiding the LLM's reasoning and tool selection.
+            chain (Runnable): Combined pipeline of prompt → LLM → output parser.
+            data_handler: Data interface for extracting and aligning stock-related data.
+            graph_generator: Responsible for rendering actual, predicted, and forecasted graphs.
+            intent_detector: Tool for parsing and categorizing user input into known intents.
+        """
         self.tools = [
             {
                 "name": "graph",
@@ -186,8 +249,18 @@ class ChatbotEngine:
         self.intent_detector = intent_detector
 
     def save_chat(self):
-        """
-        Serialize st.session_state.chat_history (including graphs) and upsert.
+        """Saves the current chat session, including any generated graphs, to persistent storage.
+
+        This method serializes the conversation history stored in `st.session_state.chat_history`,
+        including Plotly figures (if any) and additional metadata such as deep analysis outputs.
+        It then upserts the session into the MongoDB database using either the existing chat ID
+        or by creating a new record if one does not exist.
+    
+        Notes:
+            - Assistant messages may include serialized Plotly graphs under the "graphs" key.
+            - Messages are stored with role-based formatting: "user" or "assistant".
+            - Requires `st.session_state["username"]` to be set for saving.
+    
         """
         username = st.session_state.get("username")
         if not username:
@@ -241,7 +314,20 @@ class ChatbotEngine:
 
 
     def handle_input(self, user_input: str):
-        print(user_input)
+        """Processes a user query, determines intent, and returns the appropriate response.
+
+        This method routes user input through language detection, intent recognition,
+        and appropriate handler execution (graphing, stock comparison, industry analysis/comparison).
+        It also handles correction confirmations (e.g., "yes" after a suggestion),
+        updates Streamlit session state, and invokes the Gemini model as a fallback.
+    
+        Args:
+            user_input (str): The user's natural language query.
+    
+        Returns:
+            dict: A dictionary containing the chatbot's response, including textual output
+                  and intent classification. May include fallback content.
+        """
         if "chat_history" not in st.session_state:
             st.session_state.chat_history = []
 
@@ -289,7 +375,6 @@ class ChatbotEngine:
             comps       = detected.get("companies", None)
             industries  = detected.get("industries", None)
             st.session_state["last_intent"] = intent
-            print(intent)
             # ── 0️⃣ Handle “addition” intent ───────────────────────────────────────
             if intent == "addition":
                 # • company‐level addition
@@ -376,6 +461,18 @@ class ChatbotEngine:
 
 
     def _stream_response(self, user_query):
+        """Streams a real-time response from the LLM based on user input and chat history.
+
+        This method performs language detection and cleans the current chat history,
+        ensuring all messages are valid `HumanMessage` or `AIMessage` instances. It then
+        sends the formatted prompt to the Gemini LLM for streaming output.
+    
+        Args:
+            user_query (str): The user's latest query to be answered via streaming.
+    
+        Returns:
+            Generator: A stream of response tokens from the language model.
+        """
         def convert_valid_message(m):
             if isinstance(m, (HumanMessage, AIMessage)):
                 return m
@@ -406,12 +503,34 @@ class ChatbotEngine:
 
 
     def _record_response(self, user_input, response):
+        """Records the user input and model response into conversational memory.
+    
+        This method updates the internal memory buffer with the latest user and assistant messages.
+    
+        Args:
+            user_input (str): The user's original query.
+            response (str): The assistant's generated reply.
+        """
         self.memory.chat_memory.add_user_message(user_input)
         self.memory.chat_memory.add_ai_message(response)
 
     # ====== Intent Handlers (static text, no stream) ======
 
     def _handle_industry_intent(self, intent_data):
+        """Handles the 'industry_values' intent by generating graphs and a summary for a given industry.
+    
+        This method retrieves actual, predicted, and forecasted stock data for all companies in the
+        specified industry. It selects the best model for each company, generates forecasted values,
+        and creates corresponding visualizations.
+    
+        Args:
+            intent_data (dict): A dictionary containing the key "industry" with the sector name to analyze.
+    
+        Returns:
+            dict: A dictionary with:
+                - "text" (str): A language-specific summary of trends in the industry.
+                - "graphs" (list): Three Plotly figures for actual, predicted, and forecasted values.
+        """
         industry = intent_data["industry"]
         language = st.session_state.get("language", "en")
         start_date = datetime(2024, 1, 1)
@@ -449,6 +568,20 @@ class ChatbotEngine:
 
 
     def _handle_graph_intent(self, intent_data):
+        """Handles the 'graph' intent for a single company by generating a unified forecast graph.
+    
+        This method retrieves actual, predicted, and forecasted stock data for the specified company,
+        using its best-performing model over the year 2024. It then generates a combined Plotly graph
+        and a textual summary of the trends.
+    
+        Args:
+            intent_data (dict): A dictionary containing the key "company" with the name or ticker of the company.
+    
+        Returns:
+            dict: A dictionary with:
+                - "text" (str): A summary of the company's stock performance and forecast.
+                - "graphs" (list): A single Plotly figure showing actual, predicted, and forecasted values.
+        """
         company = intent_data["company"].upper()
         language = st.session_state.get("language", "en")
         ticker = self.intent_detector.resolve_ticker(company) + ".TA"
@@ -474,6 +607,20 @@ class ChatbotEngine:
 
 
     def _handle_compare_intent(self, intent_data):
+        """Handles the 'compare' intent by comparing multiple companies' stock performance.
+    
+        For each company, this method loads actual, predicted, and forecasted data using the 
+        best-performing model, then generates a unified comparison graph and textual summary.
+        Only companies with valid data and forecasts are included in the final output.
+    
+        Args:
+            intent_data (dict): A dictionary with the key "companies" containing a list of company names.
+    
+        Returns:
+            dict: A dictionary with:
+                - "text" (str): A comparative summary of stock trends across companies.
+                - "graphs" (list): A single Plotly figure showing side-by-side stock performance.
+        """
         companies = intent_data["companies"]
         language = st.session_state.get("language", "en")
         tickers = [self.intent_detector.resolve_ticker(name.upper()) + ".TA" for name in companies]
@@ -513,6 +660,21 @@ class ChatbotEngine:
         return {"text": summary, "graphs": [fig]}
 
     def _handle_sector_comparison_intent(self, industries):
+        """Handles the 'sector_comparison' intent by comparing average trends across multiple industries.
+    
+        This method aggregates actual, predicted, and forecasted stock values for each industry over a 
+        defined period. It computes the average values per date and ensures alignment across industries 
+        using common dates. The method generates sector-wide comparison graphs and a textual summary 
+        highlighting trends, rates of change, and overall performance.
+    
+        Args:
+            industries (list of str): A list of industry names to compare.
+    
+        Returns:
+            dict: A dictionary with:
+                - "text" (str): A multi-industry comparison summary including trend analysis and deeper insights.
+                - "graphs" (list): Three Plotly figures comparing actual, predicted, and forecasted trends across industries.
+        """
         language = st.session_state.get("language", "en")
         start_date = datetime(2024, 1, 1)
         end_date = datetime(2025, 3, 13)
@@ -594,6 +756,23 @@ class ChatbotEngine:
 
 
     def _generate_industry_summary(self, actual_df, predicted_df, forecast_df, name_map, industry, language="en"):
+        """Generates a multilingual summary of stock trends for all companies in a given industry.
+    
+        For each company, this method calculates statistical metrics (min, max, mean, and percent increase)
+        for actual, predicted, and forecasted values. It returns a formatted summary string in English or Hebrew.
+    
+        Args:
+            actual_df (pd.DataFrame): DataFrame containing actual stock values per company.
+            predicted_df (pd.DataFrame): DataFrame containing model-predicted stock values.
+            forecast_df (pd.DataFrame): DataFrame with forecasted future stock values.
+            name_map (dict): Mapping from ticker symbols to company names.
+            industry (str): The industry being summarized.
+            language (str, optional): Output language ("en" or "he"). Defaults to "en".
+    
+        Returns:
+            str: A formatted summary string describing stock behavior across companies in the industry.
+        """
+
         def summarize(df, col):
             summary = []
             for ticker in df["Ticker"].unique():
@@ -634,9 +813,24 @@ class ChatbotEngine:
                 f"**Forecasts:**\n{summarize(forecast_df, 'Forecasted')}"
             )
 
-
-
     def _generate_single_stock_summary(self, company, data, forecast_df, model, language="en"):
+        """Generates a summary of actual, predicted, and forecasted statistics for a single stock.
+    
+        This method computes key metrics—min, max, mean, trend direction, and percent increase—
+        for each of the actual, predicted, and forecasted value columns, and formats them into
+        a multilingual summary.
+    
+        Args:
+            company (str): The company name to display in the summary.
+            data (pd.DataFrame): DataFrame containing actual and predicted values.
+            forecast_df (pd.DataFrame): DataFrame containing forecasted values.
+            model (str): The name of the model used for predictions.
+            language (str, optional): Language for the output ("en" or "he"). Defaults to "en".
+    
+        Returns:
+            str: A formatted summary of the stock’s performance in the selected language.
+        """
+
         def stats(col, df):
             start_val = df[col].iloc[0]
             end_val = df[col].iloc[-1]
@@ -672,21 +866,39 @@ class ChatbotEngine:
                 f"- Forecasted: Min={forecast['min']:.2f}, Max={forecast['max']:.2f}, Mean={forecast['mean']:.2f}, "
                 f"Increase={forecast['increase_rate']:.2f}%, Trend={forecast['trend']}"
             )
-
-
-
-
-
+    
     def _generate_comparison_summary(self, summaries, language="en"):
+        """Generates a multilingual summary for a comparison of multiple companies.
+    
+        This method formats a list of individual stock summaries into a single 
+        readable section header and body in either English or Hebrew.
+    
+        Args:
+            summaries (list of str): List of pre-formatted summary strings for each company.
+            language (str, optional): Language for the output ("en" or "he"). Defaults to "en".
+    
+        Returns:
+            str: A full comparison summary string in the selected language.
+        """
         if language == "he":
             return "📊 סיכום השוואה בין חברות:\n\n" + "\n\n".join(summaries)
         return "📊 Comparison Summary:\n\n" + "\n\n".join(summaries)
 
     def _generate_deeper_analysis(self, summary: str, context_info: str = "") -> str:
+        """Generates a deeper financial analysis using Gemini based on a summary and optional context.
+    
+        This method constructs a language-specific prompt (Hebrew or English) to request a detailed
+        financial interpretation of stock trends, including explanations for beginners and risk
+        considerations. The analysis is generated using the Gemini language model.
+    
+        Args:
+            summary (str): A previously generated summary of the stock or sector data.
+            context_info (str, optional): Additional context about the analysis (e.g., sector name, company name). Defaults to "".
+    
+        Returns:
+            str: A string containing the generated deep analysis. If in Hebrew, the string is wrapped in a right-aligned HTML div.
         """
-        Uses Gemini to generate deeper analysis from an existing summary and optional metadata.
-        Supports Hebrew or English output based on st.session_state["language"].
-        """
+
         language = st.session_state.get("language", "en")
 
         if language == "he":
@@ -701,10 +913,11 @@ class ChatbotEngine:
         - מהי משמעות הערכים: אמת, חיזוי, תחזית.
 
         ### תבניות, מגמות ותובנות:
-        - מה המגמה הכללית?
+        - מה המגמה הכללית? מה יכולים להיות הגורמים לה?
         - האם יש האטה בקצב הצמיחה?
         - האם המודל שומרני או אופטימי?
         - במקרה ויש יותר מחברה אחת, תייצר השוואה מסודרת
+        -פרמטרים פיננסיים נפוצים נוספים שניתן להסיק מהנתונים הקיימים, ומשמעותם בהקשר לקלט
 
         ### סיכונים שיש לקחת בחשבון:
         - אילוצים של המודל.
@@ -739,7 +952,9 @@ class ChatbotEngine:
         # 🔁 ENGLISH: default
         prompt_text = (
             "You are a financial analyst. firstm explain the companies, what they do in general(1 sentance) and about the model. Based on the given summary, values, and context, "
-            "write a **deeper analysis** including patterns, anomalies, risks, comparisons(if more than 1 company involved) and insights. "
+            "write a **deeper analysis** including patterns, possible causes, anomalies, risks, comparisons(if more than 1 company involved),"
+            "extra common financial parameters you can extract and their meaning, and insights. "
+            "finish with disclaimer about using it as a financial advice. "
             "Explain trends and make it educational for a beginner-level audience.\n\n"
             f"Context:\n{context_info}\n\nSummary:\n{summary}"
         )
