@@ -63,6 +63,15 @@ if not st.session_state.authenticated and not st.session_state.cookie_checked:
 
 # Main app logic
 def main():
+    """Main entry point for the Streamlit app.
+
+    Routes the user to the appropriate interface based on session state:
+    login, registration, password reset, or main chatbot interface.
+
+    Returns:
+        None
+    """
+
     if st.session_state.authenticated:
         display_main_app()
     elif st.session_state.reset_password:
@@ -73,6 +82,18 @@ def main():
         display_login()
 
 def display_login():
+    """Display the login form and handle user authentication.
+
+    This function renders a styled login form using Streamlit. It captures the user's
+    username and password, verifies credentials via the authentication manager, and
+    establishes session state variables upon successful login. Additionally, it manages
+    a 'remember me' option by setting an authentication token in cookies, and provides
+    a signup button to switch to the registration view.
+
+    Returns:
+        None
+    """
+
     # Custom CSS for styling
     st.markdown("""
     <style>
@@ -189,11 +210,18 @@ def display_login():
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-    
-
-
-
 def display_registration():
+    """Display the user registration form and handle account creation.
+
+    This function renders a styled registration form using Streamlit. It collects user
+    information such as username, email, and password, performs basic validation, and 
+    registers the user via the user management system. Upon successful registration, 
+    it automatically logs the user in and initializes a new chat session.
+
+    Returns:
+        None
+    """
+
     # Reuse the same CSS from login page
     st.markdown("""
     <style>
@@ -329,6 +357,16 @@ def display_registration():
         st.markdown('</div>', unsafe_allow_html=True)  # Close registration-container
 
 def display_password_reset():
+    """Display and handle the password reset process via email and code verification.
+
+    This function renders a two-step password reset interface using Streamlit. In the
+    first step, users enter their email to receive a reset code. In the second step,
+    users enter the received code along with a new password to complete the reset.
+
+    Returns:
+        None
+    """
+
     # Reuse the same CSS from login page
     st.markdown("""
     <style>
@@ -481,6 +519,15 @@ def display_password_reset():
         st.markdown('</div>', unsafe_allow_html=True)  # Close reset-container
 
 def display_main_app():
+    """Render the main chatbot application interface after user authentication.
+
+    Initializes required session state variables, runs the Streamlit app via
+    AppManager, and provides a logout option that clears session and cookie data.
+
+    Returns:
+        None
+    """
+
     # ── Make sure our chatbot state exists ──────────────────
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
