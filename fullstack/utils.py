@@ -7,13 +7,34 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 def is_valid_email(email):
-    """Validate email format"""
+    """
+    Validate email format.
+
+    Args:
+        email (str): The email address to validate.
+
+    Returns:
+        bool: True if the email format is valid, False otherwise.
+    """
     # Basic email format validation using regex
     email_pattern = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
     return bool(re.match(email_pattern, email))
 
 def generate_random_password(length=12):
-    """Generate a random secure password"""
+    """Generate a secure random password.
+
+    This function creates a password containing a mix of uppercase letters,
+    lowercase letters, digits, and special characters. It ensures at least
+    one character from each category is included.
+
+    Args:
+        length (int, optional): The total length of the generated password.
+            Must be at least 4 to accommodate one character from each category.
+            Defaults to 12.
+
+    Returns:
+        str: A securely generated random password.
+    """
     # Include uppercase, lowercase, digits, and special characters
     characters = string.ascii_letters + string.digits + string.punctuation
     # Ensure at least one character from each category
@@ -30,7 +51,20 @@ def generate_random_password(length=12):
     return ''.join(password)
 
 def send_reset_email(email, reset_token):
-    """Send password reset email to user"""
+    """Send a password reset email to a user.
+
+    Constructs and sends an email containing a password reset code
+    using SMTP settings from environment variables. Supports both
+    plain-text and HTML formats.
+
+    Args:
+        email (str): The recipient's email address.
+        reset_token (str): The reset token to include in the email.
+
+    Returns:
+        bool: True if the email was sent successfully, False otherwise.
+    """
+
     # Email settings from environment variables
     smtp_server = os.getenv("SMTP_SERVER", "smtp.example.com")
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
