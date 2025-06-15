@@ -44,7 +44,43 @@ if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
 class AppManager:
+    """
+    Manages the full Streamlit application lifecycle for the Robo Advisor chatbot.
+
+    This class controls the layout, user interaction flow, and integration between the UI
+    and the backend logic (including the chatbot engine, intent detection, and data visualization).
+    It handles the display of welcome content, disclaimer enforcement, chat session management,
+    user input capture, and response rendering — including both summaries and deeper analysis.
+
+    Key responsibilities include:
+    - Displaying app instructions, default prompts, and usage guidelines
+    - Tracking chat sessions and enabling multi-turn memory
+    - Calling the backend engine to process prompts and generate insights
+    - Visualizing actual, predicted, and forecasted stock trends
+    - Managing bilingual support (Hebrew/English) for chatbot interaction
+    - Supporting optional deep-dive analysis on demand
+
+    This class serves as the main controller that binds together all components of the chatbot
+    application into a coherent, responsive user experience.
+    """
+
     def __init__(self):
+        """Initializes the AppManager with all necessary components.
+
+        Sets up API keys, loads models results, ticker and industry mappings, and initializes
+        the intent detector, stock data handler, graph generator, and chatbot engine.
+
+        Attributes:
+            api_key (str): API key for Gemini, pulled from environment or default.
+            ticker_mapping (dict): Mapping of company names to their stock tickers.
+            industry_mapping (dict): Mapping of industry names to standardized formats.
+            intent_detector (IntentDetector): Detects user intent based on input queries.
+            model_paths (dict): Dictionary mapping model names to their CSV file paths.
+            data_handler (StockDataHandler): Handles extraction and transformation of stock data.
+            graph_generator (GraphGenerator): Responsible for generating visual stock plots.
+            engine (ChatbotEngine): The main engine for processing user prompts and generating replies.
+        """
+
         self.api_key = os.getenv("GEMINI_API_KEY", API_KEY)
         self.ticker_mapping = self.load_ticker_mapping()
         self.industry_mapping = self.load_industry_mapping()
@@ -67,10 +103,27 @@ class AppManager:
         self.engine = ChatbotEngine(self.data_handler, self.graph_generator, self.intent_detector)
 
     def load_ticker_mapping(self) -> dict:
+        """Loads the mapping of company names to stock tickers.
+
+        Reads from the Excel file defined by `MAPPING_FILE_PATH` and constructs
+        a dictionary where keys are uppercase company names and values are uppercase tickers.
+
+        Returns:
+            dict: A dictionary mapping company names to their corresponding tickers.
+        """
         df = pd.read_excel(MAPPING_FILE_PATH)
         return {row["CompanyName"].upper(): row["Ticker"].upper() for _, row in df.iterrows()}
 
     def load_industry_mapping(self) -> dict:
+        """Loads and standardizes the mapping of noisy industry names to canonical forms.
+
+        Reads industry names from the CSV at `SECTORS_DF_PATH`, removes rows with missing values,
+        and constructs a dictionary mapping cleaned, lowercase versions of industry names
+        to their original canonical forms.
+
+        Returns:
+            dict: A dictionary mapping cleaned industry names to their canonical representations.
+        """
         df = pd.read_csv(SECTORS_DF_PATH)
         df = df.dropna(subset=["Industry"])
         canonical_industries = df["Industry"].unique()
@@ -88,6 +141,66 @@ class AppManager:
         return industry_mapping
 
     def run(self):
+        """
+        Launches and manages the full user interface of the Robo Advisor chatbot application.
+
+        This method is responsible for initializing the Streamlit layout, rendering welcome messages,
+        managing chat history, handling user input, switching between historical chats, and processing
+        responses from the chatbot engine. It also includes support for deeper analysis using Gemini
+        models and allows toggling between Hebrew and English modes.
+
+        Workflow:
+            - If the user has not accepted the disclaimer, display onboarding content.
+            - When the disclaimer is accepted, initialize the chat application.
+            - Display previous chat sessions and allow switching between them.
+            - Render chat history with text and graphs.
+            - Allow new user inputs via preset buttons or manual entry.
+            - Use intent detection and language detection to generate structured responses.
+            - Optionally offer deeper analysis using Gemini.
+            - Log all interactions to the Streamlit session state.
+
+        Key Functional Components:
+            - **Welcome Screen and Disclaimer**:
+                - Displayed only if `st.session_state.accepted_disclaimer` is `False`.
+                - Includes markdown explanations of the app's purpose, capabilities, and academic context.
+                - Contains a button that sets the disclaimer as accepted and reloads the app.
+
+            - **Chat History Handling**:
+                - Loads available chat sessions from `st.session_state.available_chats`.
+                - Allows selection of past sessions through a radio button menu.
+                - Rehydrates the selected session, reconstructing user and assistant messages,
+                  including graphs and deeper analysis components.
+
+            - **Chat Display Logic**:
+                - Renders each user message (`HumanMessage`) and assistant message (`dict` or `AIMessage`).
+                - Supports both simple text responses and responses that include one or more Plotly figures.
+                - Hebrew and English alignment is adjusted automatically based on language detection.
+
+            - **Default Prompt Buttons**:
+                - Provides quick-start prompts like:
+                    - "show me the graph of leumi"
+                    - "compare leumi and poalim"
+                    - "show me all banks"
+                - If clicked, sets the `selected_prompt` to trigger chatbot input.
+
+            - **User Input Handling**:
+                - Accepts either manual input via `st.chat_input()` or selection from default prompts.
+                - Appends user input to the chat history.
+                - Triggers chatbot response generation through `self.engine.handle_input(prompt)`.
+
+            - **Structured Response Handling**:
+                - Visualizes graphs in the assistant’s response with stable Streamlit keys.
+                - Displays both the assistant's main answer and any follow-up deep analysis.
+                - Saves the assistant's response back into `st.session_state.chat_history`.
+
+            - **Deeper Analysis Scheduling**:
+                - If a relevant intent is detected (e.g., "graph", "compare", "industry_values"), a flag is set.
+                - Displays a prompt asking if the user wants deeper analysis.
+                - If accepted, invokes `self.engine._generate_deeper_analysis()` and appends the result.
+
+        Returns:
+            None
+        """
         def get_clean_chat_history():
             #load the chat history
             lines = []
@@ -110,7 +223,11 @@ class AppManager:
             st.session_state.accepted_disclaimer = False
 
         if not st.session_state.accepted_disclaimer:
-            # ── INSERT A GREETING ─────────────────────────────────────────────────────────
+            # ── Welcome Screen and Disclaimer ─────────────────────────────────────
+            # Displays the initial welcome message and project description.
+            # If the user hasn't yet accepted the disclaimer, this section blocks access
+            # to the rest of the app and prompts the user to confirm understanding.
+
             user = st.session_state.get("username", None)
             if user:
                 st.markdown(f"### Hello, **{user}** 👋")
@@ -183,12 +300,20 @@ class AppManager:
         user = st.session_state.get("username", None)
         if user:
             st.markdown(f"### Hello, **{user}** 👋")
-        # ───────────────────────────────────────────────────────────────────────────────
+        
+        
+        # Main interface components shown after the user accepts the disclaimer.
+        # Initializes sidebar info, loads chat sessions, and prepares prompt buttons
+        # for interacting with the AI stock analysis chatbot.
+        # ── Main App Interface (Post-Disclaimer) ─────────────────────────────
 
         st.title("🤖 Robo Advisor – Israeli Stock Market")
         st.sidebar.title("About")
         st.sidebar.info("This chatbot provides stock analysis using historical and forecasted data.")
-        # ─── Chat Sessions Switcher ─────────────────────────
+        # Displays a list of existing chat sessions in the sidebar.
+        # Enables users to switch between conversations by showing their latest message.
+        # Automatically loads historical chat content and reconstructed graphs.
+        # ── Chat Session Management Sidebar ─────────────────────────────────
         st.sidebar.title("Your Chats")
 
         # 1️⃣ Sort sessions newest→oldest so “New Chat” appears first
@@ -263,6 +388,9 @@ class AppManager:
                 # mark this as the active chat
                 st.session_state.current_chat_id = str(selected_meta["_id"])
 
+        # Offers default queries as clickable buttons for convenience.
+        # These prompts demonstrate the system’s capabilities and help new users get started.
+        # ── Quick Prompt Buttons (Predefined Queries) ───────────────────────
         # Default prompt buttons
         default_prompts = [
             "show me the graph of leumi",
@@ -275,7 +403,9 @@ class AppManager:
             if cols[i].button(p, use_container_width=True):
                 selected_prompt = p
 
-        # Display chat history
+        # Renders all previous user and assistant messages from the selected chat session.
+        # Handles different message types: user text, assistant text, associated graphs,
+        # and deeper analysis if it was previously generated.
         # ── Display chat history ─────────────────────────────────────────────────
         for msg_idx, message in enumerate(st.session_state.chat_history):
             if isinstance(message, HumanMessage):
@@ -323,7 +453,10 @@ class AppManager:
                 with st.chat_message("assistant"):
                     st.write(message.content)
 
-
+        # Captures either a typed prompt or selected quick-prompt.
+        # Detects input language, adds the user message to the session,
+        # and calls the chatbot engine to handle the query (intent detection, graph generation, etc.).
+        # ── User Input and Response Generation ──────────────────────────────
         # User input
         manual_input = st.chat_input("What would you like to know?")
         prompt = selected_prompt or manual_input
@@ -357,14 +490,19 @@ class AppManager:
                 "graphs": structured_response.get("graphs", [])
             })
 
-            # Schedule deeper analysis after each valid intent
+            # If the chatbot successfully processes an intent that supports deeper insights,
+            # a flag is set in session state to optionally trigger an additional round of analysis.
+            # ── Schedule Deeper Analysis Prompt ─────────────────────────────────
             if structured_response.get("intent") in ["graph", "compare", "industry_values", "sector_comparison", "addition"]:
                 st.session_state["deep_analysis_pending"] = {
                     "summary": structured_response["text"],
                     "context": f"{structured_response.get('intent').capitalize()} Analysis"
                 }
 
-        # Always show deeper-analysis buttons when pending
+        # If deeper analysis is pending, prompts the user to select wether he would like deeper explenations.
+        # If confirmed, generates a more detailed textual interpretation using Gemini.
+        # This result is appended to the chat history and shown to the user.
+        # ── Deeper Analysis Execution ───────────────────────────────────────
         if "deep_analysis_pending" in st.session_state:
             st.markdown("### 🔍 Would you like a deeper analysis?")
             c1, c2 = st.columns([1,1])
