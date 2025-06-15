@@ -8,7 +8,50 @@ from Levenshtein import distance as levenshtein_distance
 import pandas as pd
 
 class IntentDetector:
+    """Detects user intent and resolves company or industry names from natural language input.
+
+    This class supports multilingual (Hebrew and English) intent recognition for financial chatbot queries.
+    It uses keyword matching, fuzzy logic, and spell correction to determine whether a user wants to:
+    - view a graph for a single company,
+    - compare multiple companies,
+    - analyze an entire industry,
+    - or compare multiple sectors.
+
+    It also maps Hebrew names to their English counterparts and prepares company/industry name lists
+    for robust name resolution and correction.
+
+    Attributes:
+        ticker_mapping (dict): Maps company names to ticker symbols.
+        industry_mapping (dict): Maps industry names to identifiers.
+        company_names (list): All known company names (English + Hebrew).
+        intent_keywords (dict): Trigger words for detecting supported intents.
+        keyword_vocab (list): Flat list of all known intent-related keywords.
+        spell (SpellChecker): Spell checker configured with custom domain-specific vocabulary.
+        hebrew_to_english_company (dict): Mapping from Hebrew to English company names.
+        hebrew_to_english_industry (dict): Mapping from Hebrew to English industry names.
+    """
     def __init__(self, ticker_mapping: Dict[str, str], industry_mapping: Dict[str, str]):
+        """Initializes the IntentDetector with company and industry mappings, keyword lists, and spell correction.
+    
+        This constructor loads mappings for ticker symbols and industry names, sets up keyword-based intent detection,
+        and configures a spell checker with custom vocabulary. It also builds Hebrew-to-English mappings for both
+        companies and industries, enabling bilingual support and fuzzy matching for user queries.
+    
+        Args:
+            ticker_mapping (Dict[str, str]): Dictionary mapping company names to ticker symbols.
+            industry_mapping (Dict[str, str]): Dictionary mapping industry names to their identifiers.
+    
+        Attributes:
+            ticker_mapping (dict): Maps company names to ticker symbols.
+            industry_mapping (dict): Maps industry names to industry identifiers.  
+            company_names (list): List of valid company names (English and Hebrew).
+            intent_keywords (dict): Keyword triggers for different intent categories.
+            keyword_vocab (list): Flattened list of all intent keywords.
+            spell (SpellChecker): A spell checker initialized with relevant vocabulary.
+            hebrew_to_english_company (dict): Maps Hebrew company names to English.
+            hebrew_to_english_industry (dict): Maps Hebrew industry names to English.
+        """
+
         self.ticker_mapping = ticker_mapping
         self.industry_mapping = industry_mapping
         self.company_names = list(ticker_mapping.keys())
@@ -49,18 +92,60 @@ class IntentDetector:
         hebrew_names = df_companies["HebrewCompanyName"].dropna().astype(str).str.strip().tolist()
         self.company_names += hebrew_names
     def clean_name(self, name: str) -> str:
+        """Cleans a company or industry name by stripping punctuation and converting to uppercase.
+    
+        Args:
+            name (str): The raw name string to clean.
+    
+        Returns:
+            str: The cleaned and normalized name.
+        """
         return name.strip().translate(str.maketrans('', '', string.punctuation)).upper()
 
     def normalize_text(self, text: str) -> str:
+        """Normalizes input text by lowercasing and standardizing spacing and punctuation.
+    
+        This method replaces hyphens and colons with spaces, collapses multiple spaces,
+        and trims leading/trailing whitespace.
+    
+        Args:
+            text (str): The input text to normalize.
+    
+        Returns:
+            str: A clean, lowercase, space-normalized version of the text.
+        """
         text = text.lower()
         text = re.sub(r"[-:]", " ", text)
         text = re.sub(r"\s+", " ", text)
         return text.strip()
 
     def spell_correct(self, word: str) -> str:
+        """Returns the most likely spelling correction for a given word.
+    
+        This method uses a preconfigured spell checker with domain-specific vocabulary.
+    
+        Args:
+            word (str): The input word to correct.
+    
+        Returns:
+            str: The corrected word with the highest probability.
+        """
         return self.spell.correction(word.lower())
 
     def suggest_closest_matches(self, input_name: str, candidates: List[str], n=3):
+        """Suggests the closest matches to a given input name using Levenshtein distance.
+    
+        This method compares the cleaned version of the input name against a list of candidate names
+        and returns the top N most similar matches.
+    
+        Args:
+            input_name (str): The name to match against candidate options.
+            candidates (List[str]): A list of valid names to compare.
+            n (int, optional): The maximum number of suggestions to return. Defaults to 3.
+    
+        Returns:
+            List[str]: A list of the closest matching candidate names.
+        """
         input_cleaned = self.clean_name(input_name)
         suggestions = sorted(
             candidates,
@@ -69,6 +154,18 @@ class IntentDetector:
         return suggestions[:n]
 
     def fuzzy_contains_keyword(self, user_input: str, keyword_list: List[str]) -> str:
+        """Checks if any corrected word in the input matches a keyword from a given list.
+    
+        This method applies spell correction to each word in the input and returns
+        the first matching keyword found in the provided list.
+    
+        Args:
+            user_input (str): The raw user input text.
+            keyword_list (List[str]): A list of keywords to match against.
+    
+        Returns:
+            str or None: The first matched keyword if found; otherwise, None.
+        """
         words = user_input.lower().split()
         for word in words:
             corrected = self.spell_correct(word)
@@ -77,12 +174,23 @@ class IntentDetector:
         return None
 
     def fuzzy_match_company(self, name: str) -> str:
+        """Attempts to resolve a company name using fuzzy matching and spelling correction.
+    
+        This method first tries to match the cleaned name directly to known company names or tickers.
+        If no match is found, it applies spell correction and tries again. Hebrew names are mapped
+        to their English equivalents if found.
+    
+        Args:
+            name (str): The company name to match.
+    
+        Returns:
+            str or None: The best-matched English company name or ticker if found; otherwise, None.
+        """
         name = self.clean_name(name)
         all_names = list(set(self.company_names + list(self.ticker_mapping.values())))
         close_matches = get_close_matches(name, all_names, n=1, cutoff=0.8)
         if close_matches:
             match = close_matches[0]
-            # 👇 If it's Hebrew, convert it to the English name
             if match in self.hebrew_to_english_company:
                 return self.hebrew_to_english_company[match]
             return match
@@ -91,7 +199,6 @@ class IntentDetector:
         close_matches = get_close_matches(corrected, all_names, n=1, cutoff=0.8)
         if close_matches:
             match = close_matches[0]
-            # 👇 If it's Hebrew, convert it to the English name
             if match in self.hebrew_to_english_company:
                 return self.hebrew_to_english_company[match]
             return match
@@ -100,13 +207,24 @@ class IntentDetector:
         raise ValueError(f"Company '{name}' not found. Did you mean: {', '.join(suggestions)}?")
 
     def fuzzy_match_industry(self, name: str) -> str:
+        """Attempts to match an input string to a known industry using normalization and fuzzy logic.
+    
+        The method first cleans the input and checks for partial matches within the known industry keys.
+        If no direct or partial match is found, it suggests close alternatives using Levenshtein distance.
+    
+        Args:
+            name (str): The user-provided industry name to match.
+    
+        Returns:
+            str: The canonical industry name from the industry mapping.
+    
+        Raises:
+            ValueError: If no close match is found. Suggests the top candidates for correction.
+        """
         name = name.lower().strip()
         name = re.sub(r"[-_:,&]", " ", name)
         name = re.sub(r"\s+", " ", name).strip()
-        print(name)
         for industry_key, canonical in self.industry_mapping.items():
-            print(industry_key)
-            print(canonical)
             if name in industry_key or industry_key in name:
                 return canonical
 
@@ -115,6 +233,23 @@ class IntentDetector:
 
 
     def detect(self, user_input: str, last_intent: str = None) -> dict:
+        """Detects the user's intent from their input and extracts relevant entities.
+    
+        This method performs a multi-stage pipeline to:
+        1. Translate Hebrew company/industry names to English.
+        2. Normalize the input text.
+        3. Detect companies and industries via substring matching and fuzzy logic.
+        4. Identify additive queries (e.g., adding companies to a previous graph or comparison).
+        5. Select the appropriate intent: 'graph', 'compare', 'industry_values', 'sector_comparison', 'addition', or 'text'.
+    
+        Args:
+            user_input (str): The user's raw input query.
+            last_intent (str, optional): The last detected intent to support context-aware decisions. Defaults to None.
+    
+        Returns:
+            dict: A dictionary with an "intent" key and additional keys like "company", "companies", or "industry"/"industries"
+                  depending on the detected intent.
+        """
         # 1️⃣ Hebrew → English
         tokenized_input = user_input.split()
         keyword_index = None
@@ -283,6 +418,21 @@ class IntentDetector:
 
 
     def extract_industry_name(self, user_input: str) -> str:
+        """Extracts and resolves an industry name from user input based on intent keywords.
+    
+        This method looks for known industry-related keywords in the input and extracts the
+        text following them as the candidate industry name. If no keyword match is found,
+        it defaults to using the last word in the input.
+    
+        Args:
+            user_input (str): The full user query text.
+    
+        Returns:
+            str: The matched canonical industry name.
+    
+        Raises:
+            ValueError: If no valid industry match is found.
+        """
         for keyword in self.intent_keywords["industry_values"]:
             if keyword in user_input:
                 after = user_input.split(keyword)[-1].strip()
@@ -293,6 +443,18 @@ class IntentDetector:
 
 
     def extract_company_name(self, user_input: str) -> str:
+        """Extracts and resolves a company name from user input based on graph-related keywords.
+    
+        This method searches for known graph-related keywords in the input and uses the text following
+        the last keyword as the company name candidate. If no keyword is matched, it defaults to
+        the last word in the input.
+    
+        Args:
+            user_input (str): The full user query text.
+    
+        Returns:
+            str: The best-matched company name or ticker.
+        """
         for keyword in self.intent_keywords["graph"]:
             if keyword in user_input:
                 after = user_input.split(keyword)[-1].strip()
@@ -300,6 +462,21 @@ class IntentDetector:
         return self.fuzzy_match_company(user_input.split()[-1])
 
     def extract_company_names(self, user_input: str) -> list:
+        """Extracts and resolves multiple company names from a comparison-style user query.
+    
+        This method detects comparison keywords, replaces common delimiters with commas, and attempts
+        to fuzzy match each extracted name. If a name cannot be matched directly, it uses suggestion
+        logic to find the closest alternative. Hebrew names are also supported.
+    
+        Args:
+            user_input (str): The user query containing multiple company references.
+    
+        Returns:
+            list: A list of matched company names (in English), deduplicated and ordered.
+    
+        Raises:
+            ValueError: If fewer than two valid company names are found.
+        """
         for keyword in self.intent_keywords["compare"]:
             if keyword in user_input:
                 user_input = user_input.split(keyword, 1)[-1]
@@ -337,6 +514,20 @@ class IntentDetector:
 
 
     def resolve_ticker(self, company_or_ticker: str) -> str:
+        """Resolves a company name or ticker symbol to its standardized ticker.
+    
+        This method checks both forward and reverse mappings to support inputs
+        that may be either a company name or a ticker symbol.
+    
+        Args:
+            company_or_ticker (str): The input name or ticker to resolve.
+    
+        Returns:
+            str: The resolved ticker symbol.
+    
+        Raises:
+            ValueError: If the input cannot be matched to any known company or ticker.
+        """
         key = company_or_ticker.strip().upper()
         if key in self.ticker_mapping:
             return self.ticker_mapping[key]
