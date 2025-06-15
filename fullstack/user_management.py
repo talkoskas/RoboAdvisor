@@ -5,7 +5,23 @@ import os
 import streamlit as st
 
 def register_user(username, email, password):
-    """Register a new user"""
+    """Registers a new user after validating input and checking for duplicates.
+
+    This function verifies required fields, checks email format and password length,
+    ensures that the username and email are not already taken, hashes the password,
+    and creates a new user record in the database.
+
+    Args:
+        username (str): Desired username for the new account.
+        email (str): Email address to associate with the account.
+        password (str): Plaintext password for the account.
+
+    Returns:
+        dict: A response dictionary containing:
+            - 'success' (bool): True if registration succeeded.
+            - 'message' (str): Explanation of the outcome.
+    """
+
     print(f"Attempting to register user: {username} with email: {email}")
     
     # Validate inputs
@@ -43,7 +59,22 @@ def register_user(username, email, password):
     return result
 
 def request_password_reset(email):
-    """Request a password reset for a user"""
+    """Request a password reset for a user.
+
+    If the provided email is associated with a user account, this function generates a
+    secure reset token, stores it in the database with a 1-hour expiration, and initiates
+    the password reset process (e.g., via email). For security, it returns a generic
+    success message regardless of whether the email is registered.
+
+    Args:
+        email (str): The user's registered email address.
+
+    Returns:
+        dict: A response indicating the reset request was accepted.
+            - 'success' (bool): Always True.
+            - 'message' (str): Generic success message.
+    """
+
     # Check if email exists
     user = database.get_user_by_email(email)
     if not user:
@@ -67,7 +98,22 @@ def request_password_reset(email):
     return {"success": True, "message": "Reset instructions sent to your email"}
 
 def reset_password(reset_token, new_password):
-    """Reset a user's password using a reset token"""
+    """Reset a user's password using a valid reset token.
+
+    This function verifies the validity of the reset token, hashes the new password,
+    updates the user's password in the database, and then invalidates the token
+    to prevent reuse.
+
+    Args:
+        reset_token (str): The unique token provided for password reset.
+        new_password (str): The new password to be set.
+
+    Returns:
+        dict: A response indicating the success or failure of the password reset.
+            - 'success' (bool): True if the password was successfully reset.
+            - 'message' (str): A description of the result.
+    """
+
     # Validate the token
     token_validation = database.validate_reset_token(reset_token)
     
@@ -93,7 +139,23 @@ def reset_password(reset_token, new_password):
     return result
 
 def social_login(email, provider):
-    """Handle login or registration via social providers"""
+    """Handles login or registration using a third-party social provider.
+
+    If the user exists, the method verifies that the login provider matches
+    the registered one. If not, it returns an error. If the user does not exist,
+    a new account is created with a unique username and a random password.
+
+    Args:
+        email (str): The email address associated with the social login.
+        provider (str): The name of the social provider (e.g., "google").
+
+    Returns:
+        dict: A response dictionary containing:
+            - 'success' (bool): True if login or registration succeeded.
+            - 'message' (str): Explanation of the result.
+            - 'username' (str, optional): Assigned username if login/registration was successful.
+    """
+
     # Check if user exists
     user = database.get_user_by_email(email)
     
