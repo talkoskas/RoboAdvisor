@@ -259,11 +259,12 @@ class IntentDetector:
             one = tokenized_input[i]
             two = f"{tokenized_input[i]} {tokenized_input[i+1]}" if i + 1 < len(tokenized_input) else None
 
-            if one in self.intent_keywords["compare"]:
-                keyword_index = i + 1
-                break
             if two and two in self.intent_keywords["compare"]:
                 keyword_index = i + 2
+                break
+                
+            if one in self.intent_keywords["compare"]:
+                keyword_index = i + 1
                 break
 
         # ✅ Only process tokens AFTER the matched compare keyword
@@ -284,22 +285,7 @@ class IntentDetector:
                     replacement = self.hebrew_to_english_company[best]
                     # Replace only exact occurrences
                     user_input = re.sub(rf"\b{re.escape(token_clean)}\b", replacement, user_input)
-
-
-        # Only translate company names AFTER the fuzzy-match step (keyword-index found)
-        if keyword_index is not None:
-            tail_tokens = tokenized_input[keyword_index:]
-            for token in tail_tokens:
-                token_clean = token.strip(" ,.()")
-                if token_clean in self.hebrew_to_english_company:
-                    continue
-                if re.search(r"[A-Za-z]", token_clean):
-                    continue
-                suggestions = self.suggest_closest_matches(token_clean, list(self.hebrew_to_english_company.keys()))
-                if suggestions:
-                    best = suggestions[0]
-                    replacement = self.hebrew_to_english_company[best]
-                    user_input = re.sub(rf"\b{re.escape(token_clean)}\b", replacement, user_input)
+        
 
         # Now safely replace all known exact company names (won't corrupt industry names)
         for heb, eng in self.hebrew_to_english_company.items():
