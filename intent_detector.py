@@ -253,7 +253,7 @@ class IntentDetector:
         # 1️⃣ Hebrew → English
         tokenized_input = user_input.split()
         keyword_index = None
-
+        #USE-CASE: in companies comparison, when 1 is typed correctly and other with typo
         # Find index of the first compare keyword (supports 1- and 2-token matches)
         for i in range(len(tokenized_input)):
             one = tokenized_input[i]
@@ -286,7 +286,7 @@ class IntentDetector:
                     # Replace only exact occurrences
                     user_input = re.sub(rf"\b{re.escape(token_clean)}\b", replacement, user_input)
         
-
+        #END OF USE CASE
         # Now safely replace all known exact company names (won't corrupt industry names)
         for heb, eng in self.hebrew_to_english_company.items():
             user_input = re.sub(rf"\b{re.escape(heb)}\b", eng, user_input)
