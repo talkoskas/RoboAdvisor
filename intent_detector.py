@@ -253,7 +253,7 @@ class IntentDetector:
         # 1️⃣ Hebrew → English
         tokenized_input = user_input.split()
         keyword_index = None
-        #USE-CASE: in companies comparison, when 1 is typed correctly and other with typo
+        #USE-CASE: in companies comparison in hebrew, when 1 is typed correctly and other with typo
         # Find index of the first compare keyword (supports 1- and 2-token matches)
         for i in range(len(tokenized_input)):
             one = tokenized_input[i]
