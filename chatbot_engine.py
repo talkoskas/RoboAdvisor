@@ -915,7 +915,7 @@ class ChatbotEngine:
         - האם יש האטה בקצב הצמיחה?
         - האם המודל שומרני או אופטימי?
         - במקרה ויש יותר מחברה אחת, תייצר השוואה מסודרת
-        -פרמטרים פיננסיים נפוצים נוספים שניתן להסיק מהנתונים הקיימים, ומשמעותם בהקשר לקלט
+        -תחשב פרמטרים פיננסיים נפוצים נוספים שניתן להסיק מהנתונים הקיימים, ומשמעותם בהקשר לקלט
 
         ### סיכונים שיש לקחת בחשבון:
         - אילוצים של המודל.
@@ -951,7 +951,7 @@ class ChatbotEngine:
         prompt_text = (
             "You are a financial analyst. firstm explain the companies, what they do in general(1 sentance) and about the model. Based on the given summary, values, and context, "
             "write a **deeper analysis** including patterns, possible causes, anomalies, risks, comparisons(if more than 1 company involved),"
-            "extra common financial parameters you can extract and their meaning, and insights. "
+            "calculate extra common financial parameters you can extract and their meaning, and provide extra insights. "
             "finish with disclaimer about using it as a financial advice. "
             "Explain trends and make it educational for a beginner-level audience.\n\n"
             f"Context:\n{context_info}\n\nSummary:\n{summary}"
