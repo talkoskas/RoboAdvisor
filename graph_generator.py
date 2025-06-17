@@ -63,7 +63,7 @@ class GraphGenerator:
         """
         labels = {
             "en": {"title": f"Actual, Predicted, and Forecasted Values for {stock} ({model})", "x": "Date", "y": "Value"},
-            "he": {"title": f"תחזית מניה עבור {stock} ({model})", "x": "תאריך", "y": "ערך"}
+            "he": {"title": f"תחזית מניה עבור {self._translate_company_name(stock)} ({model})", "x": "תאריך", "y": "ערך"}
         }
 
         fig = go.Figure()
