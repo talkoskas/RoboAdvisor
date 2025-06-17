@@ -4,14 +4,12 @@ import pandas as pd
 import streamlit as st
 from datetime import datetime, timedelta
 from langchain_core.messages import AIMessage, HumanMessage
-from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_google_genai import ChatGoogleGenerativeAI, HarmCategory, HarmBlockThreshold
 from functools import reduce
 from database_mongo import create_chat, update_chat
-from db import users_chat_col
 import plotly.graph_objects as go
 
 API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyC3XqPeca_kNxjsSb64aHvJbJvyakyGKQI")
