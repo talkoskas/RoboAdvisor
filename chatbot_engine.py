@@ -302,8 +302,7 @@ class ChatbotEngine:
 
         This method routes user input through language detection, intent recognition,
         and appropriate handler execution (graphing, stock comparison, industry analysis/comparison).
-        It also handles correction confirmations (e.g., "yes" after a suggestion),
-        updates Streamlit session state, and invokes the Gemini model as a fallback.
+        It also updates Streamlit session state, and invokes the Gemini model as a fallback.
     
         Args:
             user_input (str): The user's natural language query.
