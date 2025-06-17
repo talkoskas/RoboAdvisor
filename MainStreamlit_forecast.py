@@ -1,29 +1,19 @@
 import streamlit as st
 import matplotlib.pyplot as plt
-from io import BytesIO
 import os
 import pandas as pd
-import base64
-import pickle
 import numpy as np
-import matplotlib.dates as mdates
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
 import warnings
 import time
-import emoji
 import uuid
-from copy import deepcopy
 from chatbot_engine import ChatbotEngine
 
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
-from langchain.tools.render import format_tool_to_openai_function
 from langchain_core.messages import AIMessage, HumanMessage
 from intent_detector import IntentDetector
 from stock_data_handler import StockDataHandler
 from graph_generator import GraphGenerator
-from plotly.graph_objects import Figure
 from database_mongo import get_chat_by_id
 from plotly.io import from_json
 warnings.filterwarnings("ignore")
