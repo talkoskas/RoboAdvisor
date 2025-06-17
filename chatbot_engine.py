@@ -330,23 +330,6 @@ class ChatbotEngine:
             return [msg for msg in (convert(m) for m in st.session_state.chat_history) if msg]
 
         try:
-            # ── Correction‐confirmation flow ─────────────────────────────────────────
-            if user_input.strip().lower() == "yes" and "suggested_correction" in st.session_state:
-                corrected_term = st.session_state.pop("suggested_correction")
-                last_prompt    = st.session_state.get("original_prompt", "")
-
-                ticker_map = self.intent_detector.ticker_mapping
-                if corrected_term in ticker_map.values():
-                    names = [k for k, v in ticker_map.items() if v == corrected_term]
-                    if names:
-                        corrected_term = names[0]
-
-                if corrected_term and last_prompt:
-                    new_prompt = last_prompt.rsplit(" ", 1)[0] + " " + corrected_term
-                    st.session_state.original_prompt = new_prompt
-                    st.session_state.chat_history.append(HumanMessage(content=new_prompt))
-                    user_input = new_prompt
-
             # ── Language detection ────────────────────────────────────────────────────
             language = "he" if any('\u0590' <= c <= '\u05EA' for c in user_input) else "en"
             st.session_state["language"] = language
