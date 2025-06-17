@@ -180,17 +180,7 @@ class ChatbotEngine:
         ]
         # Register tools
 
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-lite",  # or "gemini-2.0-flash-lite"
-            stream=True,
-            temperature=0.3,
-            google_api_key=API_KEY,
-            safety_settings={
-                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE
-            },
-            tools=self.tools,           # ✅ here’s the correct fix
-            tool_choice="auto"          # ✅ let Gemini pick when to use tools
-        )
+        self.llm = get_llm_instance(self.tools)
         self.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
         with open("company_name_to_ticker.xlsx", "rb") as f:
             df = pd.read_excel(f)
