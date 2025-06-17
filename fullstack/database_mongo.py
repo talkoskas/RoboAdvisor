@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 import time
 from bson.objectid import ObjectId
 from db import users_col, reset_tokens_col, users_chat_col
