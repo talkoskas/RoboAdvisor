@@ -12,8 +12,6 @@ from functools import reduce
 from database_mongo import create_chat, update_chat
 import plotly.graph_objects as go
 
-API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyC3XqPeca_kNxjsSb64aHvJbJvyakyGKQI")
-
 # Global Configuration
 API_KEY = 'AIzaSyC3XqPeca_kNxjsSb64aHvJbJvyakyGKQI'
 BASE_DIR = os.getcwd()
