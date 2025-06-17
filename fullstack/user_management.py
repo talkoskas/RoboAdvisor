@@ -1,8 +1,7 @@
 import database_mongo as database
 import auth_manager
 import utils
-import os
-import streamlit as st
+
 
 def register_user(username, email, password):
     """Registers a new user after validating input and checking for duplicates.
