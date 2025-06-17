@@ -425,61 +425,6 @@ class ChatbotEngine:
         self.save_chat()
         return output
 
-
-    def _stream_response(self, user_query):
-        """Streams a real-time response from the LLM based on user input and chat history.
-
-        This method performs language detection and cleans the current chat history,
-        ensuring all messages are valid `HumanMessage` or `AIMessage` instances. It then
-        sends the formatted prompt to the Gemini LLM for streaming output.
-    
-        Args:
-            user_query (str): The user's latest query to be answered via streaming.
-    
-        Returns:
-            Generator: A stream of response tokens from the language model.
-        """
-        def convert_valid_message(m):
-            if isinstance(m, (HumanMessage, AIMessage)):
-                return m
-            elif isinstance(m, dict):
-                role = m.get("role")
-                if role == "user" and "text" in m:
-                    return HumanMessage(content=m["text"])
-                elif role == "assistant" and "text" in m:
-                    return AIMessage(content=m["text"])
-                elif role == "assistant" and "deep_analysis" in m:
-                    return AIMessage(content=m["deep_analysis"])
-            return None
-
-        # ✅ Language detection for streaming as well
-        st.session_state["language"] = "he" if any('\u0590' <= c <= '\u05EA' for c in user_query) else "en"
-
-        cleaned_history = [
-            convert_valid_message(m)
-            for m in st.session_state.chat_history
-        ]
-        cleaned_history = [m for m in cleaned_history if m is not None]
-
-        return self.chain.stream({
-            "user_query": user_query,
-            "chat_history": cleaned_history
-        })
-
-
-
-    def _record_response(self, user_input, response):
-        """Records the user input and model response into conversational memory.
-    
-        This method updates the internal memory buffer with the latest user and assistant messages.
-    
-        Args:
-            user_input (str): The user's original query.
-            response (str): The assistant's generated reply.
-        """
-        self.memory.chat_memory.add_user_message(user_input)
-        self.memory.chat_memory.add_ai_message(response)
-
     # ====== Intent Handlers (static text, no stream) ======
 
     def _handle_industry_intent(self, intent_data):
