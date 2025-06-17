@@ -2,7 +2,6 @@ import streamlit as st
 import os
 import extra_streamlit_components as stx
 from datetime import datetime, timedelta
-import matplotlib.pyplot as plt
 import auth_manager
 import user_management
 import utils
