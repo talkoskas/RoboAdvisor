@@ -352,6 +352,10 @@ class ChatbotEngine:
                     st.session_state.last_intent = base
                     # merged list of ≥2 always compares
                     result = self._handle_compare_intent({"companies": merged})
+                    st.session_state["deep_analysis_pending"] = {
+                    "summary": result["text"],
+                    "context": "Stock Comparison"
+                    }
                     self.save_chat()
                     return result
 
@@ -362,6 +366,10 @@ class ChatbotEngine:
                     st.session_state.last_industries = merged_inds
                     st.session_state.last_intent     = "sector_comparison"
                     result = self._handle_sector_comparison_intent(merged_inds)
+                    st.session_state["deep_analysis_pending"] = {
+                    "summary": result["text"],
+                    "context": f"{detected['industries']} Industries"
+                    }
                     self.save_chat()
                     return result
 
