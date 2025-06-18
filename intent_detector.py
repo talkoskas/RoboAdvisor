@@ -56,10 +56,10 @@ class IntentDetector:
         self.industry_mapping = industry_mapping
         self.company_names = list(ticker_mapping.keys())
         self.intent_keywords = {
-            "industry_values": ["actual values", "industry", "companies in industry", "all"],
+            "industry_values": ["actual values", "industry", "companies in industry", "all","בתעשיית","תעשיית","כל החברות ב","חברות ה","כל החברות של"],
             "compare": ["compare", "comparison", "between", "difference between", "versus", "vs", "with", "and", "&", ",", "השוואה", "להשוות את", "מול", "ו", "וגם", "גם", "לעומת", "בנוסף",
                         "תשווה מול", "תשווה עם", "תשווה בין", "השווה בין", "תשווה את", "תשווה ל", "תשווה למול"],
-            "graph": ["chart of", "plot of", "graph of", "graph", "plot", "visualize", "chart"]
+            "graph": ["chart of", "plot of", "graph of", "graph", "plot", "visualize", "chart","הגרף של","גרף של"]
         }
 
         self.keyword_vocab = sum(self.intent_keywords.values(), [])
