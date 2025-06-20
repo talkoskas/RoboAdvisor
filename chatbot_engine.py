@@ -54,6 +54,9 @@ def get_llm_instance(tools=None):
         safety_settings={
             HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE
         }
+    ).bind_tools(
+    [tools],        # your list of tools
+    tool_choice="auto"  # let Gemini decide when to call
     )
 def get_common_dates(frames):
     """Finds the common dates across multiple DataFrames.
