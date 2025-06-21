@@ -142,7 +142,7 @@ class StockDataHandler:
 
     def extract_by_industry(self, industry, start_date, end_date):
         """Extracts actual, predicted, and forecasted data for all companies within a given industry.
-    
+        Used in 'Sector Comparison' intent.
         This method identifies all tickers associated with the specified industry, determines each
         company's best model, and collects data over the specified date range. It merges actual/predicted
         values with forecasted values for each company.
@@ -189,7 +189,7 @@ class StockDataHandler:
 
     def get_industry_actuals(self, industry, start_date, end_date):
         """Retrieves actual stock values for all companies in a specified industry over a given date range.
-    
+        Used in 'industry_values' intent.
         For each company in the industry, this method determines its best model, extracts the actual
         values using that model, and returns a combined DataFrame with ticker, company, and Hebrew name.
     
@@ -232,7 +232,7 @@ class StockDataHandler:
 
     def get_industry_predictions(self, industry, start_date, end_date):
         """Retrieves predicted stock values for all companies in a specified industry over a given date range.
-    
+        Used in 'industry_values' intent.
         This method identifies all tickers within the given industry, determines the best model per company,
         extracts predicted values, and formats the results with company metadata for visualization or analysis.
     
