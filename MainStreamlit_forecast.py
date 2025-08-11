@@ -1,4 +1,12 @@
 import streamlit as st
+from pathlib import Path
+import sys
+
+BASE_DIR = Path(__file__).resolve().parent
+FULLSTACK_DIR = BASE_DIR / "fullstack"
+if str(FULLSTACK_DIR) not in sys.path:
+    sys.path.insert(0, str(FULLSTACK_DIR))
+
 import matplotlib.pyplot as plt
 import os
 import pandas as pd
@@ -14,8 +22,10 @@ from langchain_core.messages import AIMessage, HumanMessage
 from intent_detector import IntentDetector
 from stock_data_handler import StockDataHandler
 from graph_generator import GraphGenerator
-from database_mongo import get_chat_by_id
+from fullstack.database_mongo import get_chat_by_id
 from plotly.io import from_json
+import sys
+sys.path.append(os.path.join(os.getcwd(), "fullstack"))
 warnings.filterwarnings("ignore")
 
 # Global Configuration

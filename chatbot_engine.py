@@ -1,3 +1,16 @@
+from pathlib import Path
+import sys
+
+BASE_DIR = Path(__file__).resolve().parent
+FULLSTACK_DIR = (BASE_DIR / "fullstack")
+if not FULLSTACK_DIR.exists():
+    # אם הקובץ יושב בשורש וזה הקייס אצלך – עלה תיקייה אחת
+    FULLSTACK_DIR = (BASE_DIR / "fullstack") if (BASE_DIR / "fullstack").exists() else (BASE_DIR / "fullstack")
+# עדיף חד-ערכי:
+PROJECT_ROOT = BASE_DIR
+FULLSTACK_DIR = PROJECT_ROOT / "fullstack"
+if str(FULLSTACK_DIR) not in sys.path:
+    sys.path.insert(0, str(FULLSTACK_DIR))
 
 import os
 import pandas as pd
@@ -9,8 +22,10 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_google_genai import ChatGoogleGenerativeAI, HarmCategory, HarmBlockThreshold
 from functools import reduce
-from database_mongo import create_chat, update_chat
+from fullstack.database_mongo import create_chat, update_chat
 import plotly.graph_objects as go
+import sys
+sys.path.append(os.path.join(os.getcwd(), "fullstack"))
 
 # Global Configuration
 API_KEY = 'AIzaSyC3XqPeca_kNxjsSb64aHvJbJvyakyGKQI'
