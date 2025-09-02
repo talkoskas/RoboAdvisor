@@ -3,7 +3,10 @@ from pymongo.server_api import ServerApi
 import os
 
 # Load from env or hardcode (NOT recommended for production)
-MONGO_URI = "mongodb+srv://idanhefe:idan1234@roboadvisor.omthsqt.mongodb.net/?retryWrites=true&w=majority&appName=roboadvisor"
+MONGO_URI = "mongodb+srv://talka:Tal120898@investmate.sgmduwx.mongodb.net/?retryWrites=true&w=majority&appName=InvestMate"
+# Prev URI: "mongodb+srv://idanhefe:idan1234@roboadvisor.omthsqt.mongodb.net/?retryWrites=true&w=majority&appName=roboadvisor"
+# My URI:
+# mongodb+srv://talkaskas:Ramkol1208$$@investmate.sgmduwx.mongodb.net/?retryWrites=true&w=majority&appName=InvestMate
 client = MongoClient(MONGO_URI, server_api=ServerApi('1'))
 
 try:
@@ -16,4 +19,4 @@ except Exception as e:
 db = client["roboadvisor"]
 users_col = db["users"]
 reset_tokens_col = db["reset_tokens"]
-users_chat_col   = db["users_chat"]
+users_chat_col = db["users_chat"]

@@ -20,3 +20,7 @@ psycopg2-binary
 sqlalchemy
 requests
 python-Levenshtein
+
+# additions
+pymongo[srv]
+dnspython

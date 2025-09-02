@@ -102,6 +102,7 @@ class AppManager:
         self.graph_generator = GraphGenerator()
         self.engine = ChatbotEngine(self.data_handler, self.graph_generator, self.intent_detector)
 
+
     def load_ticker_mapping(self) -> dict:
         """Loads the mapping of company names to stock tickers.
 
@@ -276,8 +277,8 @@ class AppManager:
 
             st.markdown("## 🎓 Academic Context")
             st.markdown("""
-        This application was developed as part of a **Data Science Capstone Project** at **Ben-Gurion University (BGU)**, by students in the Department of Software and Information Systems Engineering.
-        """)
+             This application was developed as part of a **Fintech Project** at **The Academic College of Tel-Aviv Yaffo (MTA)**, by students in the Department of Computer Science.
+             """)
 
             st.markdown("## ⚠️ Disclaimer")
             st.warning("""
