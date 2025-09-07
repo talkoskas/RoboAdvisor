@@ -16,7 +16,7 @@ except Exception as e:
     print("Failed to connect:", e)
 
 # Use your desired database and collection
-db = client["roboadvisor"]
+db = client["InvestMate"]
 users_col = db["users"]
 reset_tokens_col = db["reset_tokens"]
 users_chat_col = db["users_chat"]

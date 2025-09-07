@@ -1,87 +1,137 @@
+# MainStreamlit_forecast.py
 import streamlit as st
 from pathlib import Path
 import sys
 
+# ── Path setup so fullstack imports work both locally and on Streamlit Cloud ──
 BASE_DIR = Path(__file__).resolve().parent
 FULLSTACK_DIR = BASE_DIR / "fullstack"
 if str(FULLSTACK_DIR) not in sys.path:
     sys.path.insert(0, str(FULLSTACK_DIR))
 
-import matplotlib.pyplot as plt
 import os
 import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-import plotly.graph_objects as go
-import warnings
-import time
 import uuid
-from chatbot_engine import ChatbotEngine
+import warnings
+from plotly.io import from_json, to_json
 
+# Core / app components
+from chatbot_engine import ChatbotEngine
 from langchain_core.messages import AIMessage, HumanMessage
 from intent_detector import IntentDetector
 from stock_data_handler import StockDataHandler
 from graph_generator import GraphGenerator
-from fullstack.database_mongo import get_chat_by_id
-from plotly.io import from_json
-import sys
-sys.path.append(os.path.join(os.getcwd(), "fullstack"))
+
+# DB utilities
+from fullstack.database_mongo import (
+    get_chat_by_id, get_chats_by_user, create_chat, update_chat, delete_chat
+)
+
 warnings.filterwarnings("ignore")
 
-# Global Configuration
-API_KEY = 'AIzaSyC3XqPeca_kNxjsSb64aHvJbJvyakyGKQI'
-LSTM_CSV_PATH = os.path.join("LSTM", "actual_vs_pred_lstm_without_reports.csv")
+# ── Global Configuration ──────────────────────────────────────────────────────
+API_KEY = os.getenv("GEMINI_API_KEY", "YOUR_DEV_KEY_HERE")
+LSTM_CSV_PATH    = os.path.join("LSTM", "actual_vs_pred_lstm_without_reports.csv")
 XGBOOST_CSV_PATH = os.path.join("XGBoost", "model_XGBoost_metrics_and_predictions_without_report_parameters.csv")
 LIGHTGBM_CSV_PATH = os.path.join("LightGBM", "model_LightGBM_metrics_and_predictions_total.csv")
-BEST_MODEL_CSV = os.path.join("Metrics", "without_ARIMA_model_to_stock.csv")
-SECTORS_DF_PATH = "sectors_df.csv"
+BEST_MODEL_CSV   = os.path.join("Metrics", "without_ARIMA_model_to_stock.csv")
+SECTORS_DF_PATH  = "sectors_df.csv"
 MAPPING_FILE_PATH = "company_name_to_ticker.xlsx"
 
+# ── Session defaults ──────────────────────────────────────────────────────────
 if "mentioned_tickers" not in st.session_state:
     st.session_state.mentioned_tickers = set()
-
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
+# --- module-level: safe chat hydration helper (no rerun) ---
+def load_chat_into_state(chat_doc: dict):
+    """
+    Hydrate st.session_state.chat_history from a chat document (dict with 'chat_history' list).
+    Does NOT rerun. Shows both user turns and assistant turns (incl. graphs and deep_analysis).
+    """
+    from langchain_core.messages import HumanMessage  # ensure import
+    st.session_state.chat_history = []
+
+    def _extract_text(m: dict) -> str:
+        for k in ("content", "text", "message", "summary"):
+            v = m.get(k)
+            if isinstance(v, str) and v.strip():
+                return v
+        for _, v in m.items():
+            if isinstance(v, str) and v.strip():
+                return v
+        return ""
+
+    def _extract_graphs(m: dict):
+        out = []
+        raw = m.get("graphs") or m.get("figures") or []
+        for item in raw:
+            try:
+                fig = from_json(item) if isinstance(item, (str, dict)) else None
+                if fig is not None:
+                    out.append(fig)
+            except Exception:
+                pass
+        return out
+
+    for m in (chat_doc or {}).get("chat_history", []):
+        role   = m.get("role")
+        text   = _extract_text(m)
+        graphs = _extract_graphs(m)
+        deep   = m.get("deep_analysis")
+
+        if not (text.strip() or graphs or deep):
+            continue
+
+        if role == "user":
+            st.session_state.chat_history.append(HumanMessage(content=text))
+        else:
+            row = {"role": "assistant", "content": text, "graphs": graphs}
+            if deep:
+                row["deep_analysis"] = deep
+            st.session_state.chat_history.append(row)
+
+# ── Utility: serialize chat history for MongoDB ───────────────────────────────
+def _serialize_history_for_db(history: list) -> list[dict]:
+    """Convert session_state.chat_history into a Mongo-friendly list of dicts."""
+    out = []
+    for m in history:
+        if isinstance(m, HumanMessage):
+            out.append({"role": "user", "content": m.content})
+        elif isinstance(m, dict) and m.get("role") == "assistant":
+            graphs = []
+            for fig in m.get("graphs", []) or []:
+                try:
+                    graphs.append(to_json(fig))
+                except Exception:
+                    pass
+            entry = {
+                "role": "assistant",
+                "content": m.get("content", "") or m.get("text", "") or "",
+            }
+            if graphs:
+                entry["graphs"] = graphs
+            if m.get("deep_analysis"):
+                entry["deep_analysis"] = m["deep_analysis"]
+            out.append(entry)
+        elif isinstance(m, AIMessage):
+            out.append({"role": "assistant", "content": m.content})
+    return out
+
+# ── Main App Controller ───────────────────────────────────────────────────────
 class AppManager:
     """
     Manages the full Streamlit application lifecycle for the Robo Advisor chatbot.
-
-    This class controls the layout, user interaction flow, and integration between the UI
-    and the backend logic (including the chatbot engine, intent detection, and data visualization).
-    It handles the display of welcome content, disclaimer enforcement, chat session management,
-    user input capture, and response rendering — including both summaries and deeper analysis.
-
-    Key responsibilities include:
-    - Displaying app instructions, default prompts, and usage guidelines
-    - Tracking chat sessions and enabling multi-turn memory
-    - Calling the backend engine to process prompts and generate insights
-    - Visualizing actual, predicted, and forecasted stock trends
-    - Managing bilingual support (Hebrew/English) for chatbot interaction
-    - Supporting optional deep-dive analysis on demand
-
-    This class serves as the main controller that binds together all components of the chatbot
-    application into a coherent, responsive user experience.
+    - Handles onboarding/disclaimer
+    - Chat session management (list, switch, new, delete)
+    - Renders bot conversation + figures
+    - Triggers deeper analysis prompts per-chat without duplication
     """
 
     def __init__(self):
-        """Initializes the AppManager with all necessary components.
-
-        Sets up API keys, loads models results, ticker and industry mappings, and initializes
-        the intent detector, stock data handler, graph generator, and chatbot engine.
-
-        Attributes:
-            api_key (str): API key for Gemini, pulled from environment or default.
-            ticker_mapping (dict): Mapping of company names to their stock tickers.
-            industry_mapping (dict): Mapping of industry names to standardized formats.
-            intent_detector (IntentDetector): Detects user intent based on input queries.
-            model_paths (dict): Dictionary mapping model names to their CSV file paths.
-            data_handler (StockDataHandler): Handles extraction and transformation of stock data.
-            graph_generator (GraphGenerator): Responsible for generating visual stock plots.
-            engine (ChatbotEngine): The main engine for processing user prompts and generating replies.
-        """
-
-        self.api_key = os.getenv("GEMINI_API_KEY", API_KEY)
+        # Core components
+        self.api_key = API_KEY
         self.ticker_mapping = self.load_ticker_mapping()
         self.industry_mapping = self.load_industry_mapping()
         self.intent_detector = IntentDetector(self.ticker_mapping, self.industry_mapping)
@@ -91,144 +141,78 @@ class AppManager:
             "XGBoost": XGBOOST_CSV_PATH,
             "LightGBM": LIGHTGBM_CSV_PATH,
         }
-
         self.data_handler = StockDataHandler(
             self.ticker_mapping,
             model_paths=self.model_paths,
             sector_path=SECTORS_DF_PATH,
             best_model_path=BEST_MODEL_CSV
         )
-
         self.graph_generator = GraphGenerator()
         self.engine = ChatbotEngine(self.data_handler, self.graph_generator, self.intent_detector)
 
-
+    # ── Data loaders ───────────────────────────────────────────────────────────
     def load_ticker_mapping(self) -> dict:
-        """Loads the mapping of company names to stock tickers.
-
-        Reads from the Excel file defined by `MAPPING_FILE_PATH` and constructs
-        a dictionary where keys are uppercase company names and values are uppercase tickers.
-
-        Returns:
-            dict: A dictionary mapping company names to their corresponding tickers.
-        """
         df = pd.read_excel(MAPPING_FILE_PATH)
         return {row["CompanyName"].upper(): row["Ticker"].upper() for _, row in df.iterrows()}
 
     def load_industry_mapping(self) -> dict:
-        """Loads and standardizes the mapping of noisy industry names to canonical forms.
-
-        Reads industry names from the CSV at `SECTORS_DF_PATH`, removes rows with missing values,
-        and constructs a dictionary mapping cleaned, lowercase versions of industry names
-        to their original canonical forms.
-
-        Returns:
-            dict: A dictionary mapping cleaned industry names to their canonical representations.
-        """
-        df = pd.read_csv(SECTORS_DF_PATH)
-        df = df.dropna(subset=["Industry"])
-        canonical_industries = df["Industry"].unique()
-        industry_mapping = {}
-        for industry in canonical_industries:
+        df = pd.read_csv(SECTORS_DF_PATH).dropna(subset=["Industry"])
+        canonical = df["Industry"].unique()
+        mapping = {}
+        for industry in canonical:
             cleaned = (
                 str(industry).lower()
-                .replace("-", " ")
-                .replace(":", " ")
-                .replace("_", " ")
-                .replace(",", " ")
+                .replace("-", " ").replace(":", " ")
+                .replace("_", " ").replace(",", " ")
             )
             cleaned = " ".join(cleaned.split())
-            industry_mapping[cleaned] = industry.strip()
-        return industry_mapping
+            mapping[cleaned] = industry.strip()
+        return mapping
 
+    # ── Main UI ───────────────────────────────────────────────────────────────
     def run(self):
-        """
-        Launches and manages the full user interface of the Robo Advisor chatbot application.
+        # ── Authentication guard: must be logged in before anything else ──────
+        if not st.session_state.get("authenticated"):
+            from fullstack import login_ui
+            login_ui.display_login()
+            return
 
-        This method is responsible for initializing the Streamlit layout, rendering welcome messages,
-        managing chat history, handling user input, switching between historical chats, and processing
-        responses from the chatbot engine. It also includes support for deeper analysis using Gemini
-        models and allows toggling between Hebrew and English modes.
+        # Per-run flag to avoid duplicate deep-analysis prompts
+        just_set_pending = False
 
-        Workflow:
-            - If the user has not accepted the disclaimer, display onboarding content.
-            - When the disclaimer is accepted, initialize the chat application.
-            - Display previous chat sessions and allow switching between them.
-            - Render chat history with text and graphs.
-            - Allow new user inputs via preset buttons or manual entry.
-            - Use intent detection and language detection to generate structured responses.
-            - Optionally offer deeper analysis using Gemini.
-            - Log all interactions to the Streamlit session state.
+        # Container for per-chat pending prompts
+        if "pending_by_chat" not in st.session_state:
+            st.session_state.pending_by_chat = {}
 
-        Key Functional Components:
-            - **Welcome Screen and Disclaimer**:
-                - Displayed only if `st.session_state.accepted_disclaimer` is `False`.
-                - Includes markdown explanations of the app's purpose, capabilities, and academic context.
-                - Contains a button that sets the disclaimer as accepted and reloads the app.
+        # Nonce used to force re-instantiation of chat selectbox after create/delete
+        if "chat_widget_nonce" not in st.session_state:
+            st.session_state.chat_widget_nonce = 0
 
-            - **Chat History Handling**:
-                - Loads available chat sessions from `st.session_state.available_chats`.
-                - Allows selection of past sessions through a radio button menu.
-                - Rehydrates the selected session, reconstructing user and assistant messages,
-                  including graphs and deeper analysis components.
+        # ── Helpers ───────────────────────────────────────────────────────────
+        def _reload_chats(username: str):
+            chats = sorted(
+                get_chats_by_user(username),
+                key=lambda m: m["last_updated"],
+                reverse=True
+            )
+            st.session_state["available_chats"] = chats
+            return chats
 
-            - **Chat Display Logic**:
-                - Renders each user message (`HumanMessage`) and assistant message (`dict` or `AIMessage`).
-                - Supports both simple text responses and responses that include one or more Plotly figures.
-                - Hebrew and English alignment is adjusted automatically based on language detection.
+        def _has_blank_chat(username: str) -> bool:
+            """True if a chat exists with no user messages."""
+            for meta in get_chats_by_user(username):
+                doc = get_chat_by_id(meta["_id"]) or {}
+                hist = doc.get("chat_history", []) or []
+                has_user = any((m.get("role") == "user" and (m.get("content") or "").strip()) for m in hist)
+                if not has_user:
+                    return True
+            return False
 
-            - **Default Prompt Buttons**:
-                - Provides quick-start prompts like:
-                    - "show me the graph of leumi"
-                    - "compare leumi and poalim"
-                    - "show me all banks"
-                - If clicked, sets the `selected_prompt` to trigger chatbot input.
-
-            - **User Input Handling**:
-                - Accepts either manual input via `st.chat_input()` or selection from default prompts.
-                - Appends user input to the chat history.
-                - Triggers chatbot response generation through `self.engine.handle_input(prompt)`.
-
-            - **Structured Response Handling**:
-                - Visualizes graphs in the assistant’s response with stable Streamlit keys.
-                - Displays both the assistant's main answer and any follow-up deep analysis.
-                - Saves the assistant's response back into `st.session_state.chat_history`.
-
-            - **Deeper Analysis Scheduling**:
-                - If a relevant intent is detected (e.g., "graph", "compare", "industry_values"), a flag is set.
-                - Displays a prompt asking if the user wants deeper analysis.
-                - If accepted, invokes `self.engine._generate_deeper_analysis()` and appends the result.
-
-        Returns:
-            None
-        """
-        def get_clean_chat_history():
-            #load the chat history
-            lines = []
-            for m in st.session_state.chat_history:
-                if isinstance(m, HumanMessage):
-                    lines.append(f"User: {m.content}")
-                elif isinstance(m, AIMessage):
-                    lines.append(f"Assistant: {m.content}")
-                elif isinstance(m, dict):
-                    if m.get("role") == "assistant":
-                        if "deep_analysis" in m:
-                            lines.append(f"Assistant: {m['deep_analysis']}")
-                        elif "text" in m:
-                            lines.append(f"Assistant: {m['text']}")
-                    elif m.get("role") == "user" and "text" in m:
-                        lines.append(f"User: {m['text']}")
-            return "\n".join(lines)
-
+        # ── Onboarding / Disclaimer (only after login) ────────────────────────
         if "accepted_disclaimer" not in st.session_state:
             st.session_state.accepted_disclaimer = False
 
         if not st.session_state.accepted_disclaimer:
-            # ── Welcome Screen and Disclaimer ─────────────────────────────────────
-            # Displays the initial welcome message and project description.
-            # If the user hasn't yet accepted the disclaimer, this section blocks access
-            # to the rest of the app and prompts the user to confirm understanding.
-
             user = st.session_state.get("username", None)
             if user:
                 st.markdown(f"### Hello, **{user}** 👋")
@@ -236,163 +220,170 @@ class AppManager:
 
             st.markdown("## 📊 Stock Analysis and Forecasting Application")
             st.markdown("""
-        This is a **Streamlit-based tool** that helps you analyze and forecast stock performance, especially for companies in the Israeli (TA) stock market.
+This is a **Streamlit-based tool** that helps you analyze and forecast stock performance, especially for companies in the Israeli (TA) stock market.
 
-        It combines **advanced machine learning models** like **LSTM**, **GRU**, **XGBoost** and **LightGBM** to deliver clear insights into stock behavior.
+It combines **advanced machine learning models** like **LSTM**, **GRU**, **XGBoost** and **LightGBM** to deliver clear insights into stock behavior.
 
-        Whether you're a student, investor, or just curious — this app makes stock analysis simple, visual, and accessible.
-        """)
+Whether you're a student, investor, or just curious — this app makes stock analysis simple, visual, and accessible.
+""")
 
             st.markdown("## 🧠 What Can This App Do?")
             st.markdown("""
-        - 📈 **Visualize actual vs predicted stock performance**
-        - 🔮 **Forecast future trends using advanced models**
-        - 🏭 **Explore industry-wide behavior across sectors**
-        - ⚖️ **Compare multiple stocks side-by-side**
-        - 🤖 **Interact with an AI chatbot** that answers your questions and generates graphs
-
-        The chatbot uses **natural language processing** to understand your queries and provide visual + textual feedback.
-        """)
+- 📈 **Visualize actual vs predicted stock performance**
+- 🔮 **Forecast future trends using advanced models**
+- 🏭 **Explore industry-wide behavior across sectors**
+- ⚖️ **Compare multiple stocks side-by-side**
+- 🤖 **Interact with an AI chatbot** that answers your questions and generates graphs
+""")
 
             st.markdown("## ⚙️ How Does It Work?")
             st.markdown("""
-        The app uses machine learning models to detect patterns in historical stock prices and predict future performance:
-
-        - **LSTM / GRU** → sequence-aware models for time-series forecasting  
-        - **XGBoost / LightGBM** → powerful tree-based models for structured tabular data  
-
-        It visualizes **actual**, **predicted**, and **forecasted** data for each company or sector in interactive graphs.
-        """)
-
-            st.markdown("## 💬 How Do I Use It?")
-            st.markdown("""
-        You can ask the chatbot anything like:
-
-        - 🟢 `show me the graph of leumi`
-        - 🟢 `compare leumi and poalim`
-        - 🟢 `show me all banks`
-
-        The app will detect your intent and generate relevant insights and visuals.
-        """)
+- **LSTM / GRU** → sequence-aware models for time-series forecasting  
+- **XGBoost / LightGBM** → powerful tree-based models for structured tabular data  
+""")
 
             st.markdown("## 🎓 Academic Context")
             st.markdown("""
-             This application was developed as part of a **Fintech Project** at **The Academic College of Tel-Aviv Yaffo (MTA)**, by students in the Department of Computer Science.
-             """)
+This application was developed as part of a **Fintech Project** at **The Academic College of Tel-Aviv Yaffo (MTA)**, by students in the Department of Computer Science.
+""")
 
             st.markdown("## ⚠️ Disclaimer")
             st.warning("""
-        The chatbot's responses are **not binding financial recommendations** and do **not replace professional advice**.  
-        All outputs are based on historical data and model estimations and are provided for educational purposes only.
-        """)
-
-            st.markdown("")
+The chatbot's responses are **not binding financial recommendations** and do **not replace professional advice**.  
+All outputs are based on historical data and model estimations and are provided for educational purposes only.
+""")
 
             if st.button("✅ I understand and wish to continue"):
                 st.session_state.accepted_disclaimer = True
                 st.rerun()
-
-
             return
 
-        # st.set_page_config(page_title="Robo Advisor", layout="wide")
-
-        # ── INSERT A GREETING ─────────────────────────────────────────────────────────
+        # ── Main page title / greeting ────────────────────────────────────────
         user = st.session_state.get("username", None)
         if user:
             st.markdown(f"### Hello, **{user}** 👋")
-        
-        
-        # Main interface components shown after the user accepts the disclaimer.
-        # Initializes sidebar info, loads chat sessions, and prepares prompt buttons
-        # for interacting with the AI stock analysis chatbot.
-        # ── Main App Interface (Post-Disclaimer) ─────────────────────────────
-
         st.title("🤖 Robo Advisor – Israeli Stock Market")
+
+        # ── SIDEBAR: Chats / New / Delete / Logout ────────────────────────────
         st.sidebar.title("About")
         st.sidebar.info("This chatbot provides stock analysis using historical and forecasted data.")
-        # Displays a list of existing chat sessions in the sidebar.
-        # Enables users to switch between conversations by showing their latest message.
-        # Automatically loads historical chat content and reconstructed graphs.
-        # ── Chat Session Management Sidebar ─────────────────────────────────
         st.sidebar.title("Your Chats")
+        username = st.session_state.get("username")
 
-        # 1️⃣ Sort sessions newest→oldest so “New Chat” appears first
-        chat_metas = sorted(
-            st.session_state.get("available_chats", []),
-            key=lambda c: c["last_updated"],
-            reverse=True
-        )
+        # Initial load or explicit refresh
+        if "available_chats" not in st.session_state or st.session_state.get("_refresh_chats"):
+            _reload_chats(username)
+            st.session_state["_refresh_chats"] = False
 
-        # 2️⃣ Build a list of labels (first user prompt or “New Chat”)
-        chat_labels = []
-        for meta in chat_metas:
-            doc = get_chat_by_id(meta["_id"])
-            first = next(
-                (m.get("content", "") for m in doc.get("chat_history", []) if m.get("role") == "user"),
-                ""
+        chats = st.session_state.get("available_chats", [])
+
+        # Human-readable labels from the first user message; fallback to "New Chat"
+        labels_by_id = {}
+        ids = []
+        for meta in chats:
+            cid = str(meta["_id"])
+            ids.append(cid)
+            doc = get_chat_by_id(meta["_id"]) or {}
+            first_user_text = next(
+                (m.get("content", "").strip()
+                 for m in doc.get("chat_history", [])
+                 if m.get("role") == "user" and m.get("content")), ""
             )
-            chat_labels.append(first.strip() or "New Chat")
+            labels_by_id[cid] = first_user_text or "New Chat"
 
-        # 3️⃣ Render as a radio (segmented) control, defaulting to index 0
-        if chat_labels:
-            idx = st.sidebar.radio(
+        # Ensure we have a current selection
+        if ids and ("current_chat_id" not in st.session_state or st.session_state["current_chat_id"] not in ids):
+            st.session_state["current_chat_id"] = ids[0]
+
+        # Dynamic key for selectbox to allow re-instantiation after create/delete
+        widget_key = f"selected_chat_id_{st.session_state.chat_widget_nonce}"
+        default_idx = 0
+        if st.session_state.get("current_chat_id") in ids:
+            default_idx = ids.index(st.session_state["current_chat_id"])
+
+        # Callback to hydrate immediately on selection change (no rerun needed)
+        def _on_chat_select_change():
+            selected_id_now = st.session_state.get(widget_key)
+            if not selected_id_now:
+                return
+            if selected_id_now != st.session_state.get("current_chat_id"):
+                st.session_state["current_chat_id"] = selected_id_now
+                doc = get_chat_by_id(selected_id_now) or {}
+                load_chat_into_state(doc)
+                # Clear any pending deeper-analysis for the newly active chat
+                if "pending_by_chat" in st.session_state:
+                    st.session_state["pending_by_chat"].pop(selected_id_now, None)
+                st.session_state["_hydrated_chat_id"] = selected_id_now
+
+        if ids:
+            st.sidebar.selectbox(
                 "Switch chats",
-                options=list(range(len(chat_labels))),
-                format_func=lambda i: chat_labels[i],
-                index=0,
-                key="selected_chat_idx"
+                options=ids,
+                index=default_idx,
+                format_func=lambda cid: labels_by_id.get(cid, cid),
+                key=widget_key,
+                on_change=_on_chat_select_change,
             )
 
-            selected_meta = chat_metas[idx]
-            if str(selected_meta["_id"]) != st.session_state.get("current_chat_id"):
-                # persist the chat we’re leaving
-                self.engine.save_chat()
+            # Ensure hydration for initial load (first render or after rerun)
+            active_id = st.session_state.get("current_chat_id")
+            if active_id and st.session_state.get("_hydrated_chat_id") != active_id:
+                doc = get_chat_by_id(active_id) or {}
+                load_chat_into_state(doc)
+                st.session_state["_hydrated_chat_id"] = active_id
+        else:
+            st.sidebar.info("No chats yet. Start a new conversation to see it here.")
 
-                # load the newly selected session
-                chat_doc = get_chat_by_id(selected_meta["_id"])
-                st.session_state.chat_history = []
-                for m in chat_doc.get("chat_history", []):
-                    # unify old vs new summary key
-                    main_text = m.get("content") or m.get("text", "") or ""
-                    # rebuild any graphs
-                    figs = []
-                    for fig_json in m.get("graphs", []):
-                        try:
-                            figs.append(from_json(fig_json))
-                        except:
-                            pass
+        # ➕ New Chat (only if there’s no existing blank chat)
+        if st.sidebar.button("➕ New chat", use_container_width=True):
+            if _has_blank_chat(username):
+                st.sidebar.info("You already have an empty chat. Use it or start talking there.")
+            else:
+                new_id = create_chat(username, [], None)
+                st.session_state["current_chat_id"] = str(new_id)
+                st.session_state["_refresh_chats"] = True
+                st.session_state.pop("_hydrated_chat_id", None)
+                st.session_state["chat_history"] = []
+                # Force selectbox to be recreated with new default selection
+                st.session_state.chat_widget_nonce += 1
+                st.rerun()
 
-                    # deep analysis might live in its own field
-                    deep = m.get("deep_analysis")
+        # 🗑️ Delete current chat
+        if ids:
+            with st.sidebar.expander("Danger zone", expanded=False):
+                if st.button("🗑️ Delete current chat", type="primary", use_container_width=True):
+                    curr_id = st.session_state.get("current_chat_id")
+                    if curr_id and delete_chat(curr_id, username):
+                        st.success("Chat deleted.")
+                        st.session_state["_refresh_chats"] = True
+                        st.session_state.pop("_hydrated_chat_id", None)
+                        st.session_state["chat_history"] = []
 
-                    # skip truly empty placeholder messages
-                    if not (main_text.strip() or figs or deep):
-                        continue
+                        remaining = sorted(get_chats_by_user(username), key=lambda m: m["last_updated"], reverse=True)
+                        if remaining:
+                            st.session_state["current_chat_id"] = str(remaining[0]["_id"])
+                        else:
+                            st.session_state["current_chat_id"] = None
 
-                    if m.get("role") == "user":
-                        st.session_state.chat_history.append(
-                            HumanMessage(content=main_text)
-                        )
+                        # Recreate the selectbox cleanly
+                        st.session_state.chat_widget_nonce += 1
+                        st.rerun()
                     else:
-                        entry = {
-                            "role":      "assistant",
-                            "content":   main_text,
-                            "graphs":    figs
-                        }
-                        if deep:
-                            entry["deep_analysis"] = deep
+                        st.error("Failed to delete chat. Please try again.")
 
-                        st.session_state.chat_history.append(entry)
+        # 🚪 Logout
+        if st.sidebar.button("🚪 Logout", use_container_width=True):
+            try:
+                import extra_streamlit_components as stx
+                cm = stx.CookieManager()
+                if cm.get("auth_token"):
+                    cm.delete("auth_token")
+            except Exception:
+                pass
+            st.session_state.clear()
+            st.rerun()
 
-
-                # mark this as the active chat
-                st.session_state.current_chat_id = str(selected_meta["_id"])
-
-        # Offers default queries as clickable buttons for convenience.
-        # These prompts demonstrate the system’s capabilities and help new users get started.
-        # ── Quick Prompt Buttons (Predefined Queries) ───────────────────────
-        # Default prompt buttons
+        # ── Chat UI (center pane) ─────────────────────────────────────────────
         default_prompts = [
             "show me the graph of leumi",
             "compare leumi and poalim",
@@ -404,74 +395,52 @@ class AppManager:
             if cols[i].button(p, use_container_width=True):
                 selected_prompt = p
 
-        # Renders all previous user and assistant messages from the selected chat session.
-        # Handles different message types: user text, assistant text, associated graphs,
-        # and deeper analysis if it was previously generated.
-        # ── Display chat history ─────────────────────────────────────────────────
-        for msg_idx, message in enumerate(st.session_state.chat_history):
+        # Re-render history
+        for msg_idx, message in enumerate(st.session_state.get("chat_history", [])):
             if isinstance(message, HumanMessage):
                 with st.chat_message("user"):
                     st.write(message.content)
-
-            # our reconstructed assistant dicts
             elif isinstance(message, dict) and message.get("role") == "assistant":
                 with st.chat_message("assistant"):
-                    # 1️⃣ Render each Plotly figure with a stable key
                     for fig_idx, fig in enumerate(message.get("graphs", [])):
-                        st.plotly_chart(
-                            fig,
-                            use_container_width=True,
-                            key=f"chat{msg_idx}_fig{fig_idx}"
-                        )
-
-                    # 2️⃣ Render the main summary text
+                        st.plotly_chart(fig, use_container_width=True, key=f"chat{msg_idx}_fig{fig_idx}")
                     content = message.get("content")
                     if content:
-                        lang  = st.session_state.get("language", "en")
+                        lang = st.session_state.get("language", "en")
                         align = "right" if lang == "he" else "left"
-                        dir_  = "rtl"   if lang == "he" else "ltr"
+                        dir_ = "rtl" if lang == "he" else "ltr"
                         st.markdown(
-                            f'<div dir="{dir_}" style="text-align: {align}; font-size: 18px;">'
-                            f'{content}</div>',
+                            f'<div dir="{dir_}" style="text-align: {align}; font-size: 18px;">{content}</div>',
                             unsafe_allow_html=True
                         )
-
-                    # 3️⃣ Render deeper analysis if present
                     deep = message.get("deep_analysis")
                     if deep:
                         st.markdown("### 🔍 Deeper Analysis")
-                        lang  = st.session_state.get("language", "en")
+                        lang = st.session_state.get("language", "en")
                         align = "right" if lang == "he" else "left"
-                        dir_  = "rtl"   if lang == "he" else "ltr"
+                        dir_ = "rtl" if lang == "he" else "ltr"
                         st.markdown(
-                            f'<div dir="{dir_}" style="text-align: {align}; font-size: 18px;">'
-                            f'{deep}</div>',
+                            f'<div dir="{dir_}" style="text-align: {align}; font-size: 18px;">{deep}</div>',
                             unsafe_allow_html=True
                         )
-
-            # legacy AIMessage objects (fallback)
             elif isinstance(message, AIMessage):
                 with st.chat_message("assistant"):
                     st.write(message.content)
 
-        # Captures either a typed prompt or selected quick-prompt.
-        # Detects input language, adds the user message to the session,
-        # and calls the chatbot engine to handle the query (intent detection, graph generation, etc.).
-        # ── User Input and Response Generation ──────────────────────────────
-        # User input
+        # Input
         manual_input = st.chat_input("What would you like to know?")
         prompt = selected_prompt or manual_input
 
         if prompt:
-            # Language detection & append
             st.session_state["language"] = "he" if any('\u0590' <= c <= '\u05EA' for c in prompt) else "en"
             user_msg = HumanMessage(content=prompt)
             st.session_state.chat_history.append(user_msg)
-            with st.chat_message("user"): st.write(prompt)
+            with st.chat_message("user"):
+                st.write(prompt)
 
-            # Generate and display summary + graphs
             structured_response = self.engine.handle_input(prompt)
             st.session_state["last_structured_response"] = structured_response
+
             with st.chat_message("assistant"):
                 for i, graph in enumerate(structured_response.get("graphs", [])):
                     st.plotly_chart(graph, use_container_width=True, key=f"main_{i}_{uuid.uuid4()}")
@@ -484,49 +453,122 @@ class AppManager:
                         unsafe_allow_html=True
                     )
 
-            # Save summary to history
             st.session_state.chat_history.append({
                 "role": "assistant",
                 "content": structured_response.get("text", ""),
                 "graphs": structured_response.get("graphs", [])
             })
 
-            # If the chatbot successfully processes an intent that supports deeper insights,
-            # a flag is set in session state to optionally trigger an additional round of analysis.
-            # ── Schedule Deeper Analysis Prompt ─────────────────────────────────
-            if structured_response.get("intent") in ["graph", "compare", "industry_values", "sector_comparison", "addition"]:
-                st.session_state["deep_analysis_pending"] = {
-                    "summary": structured_response["text"],
-                    "context": f"{structured_response.get('intent').capitalize()} Analysis"
-                }
+            # Persist chat after each exchange
+            cid = st.session_state.get("current_chat_id")
+            if cid:
+                try:
+                    payload = _serialize_history_for_db(st.session_state.chat_history)
+                    update_chat(cid, payload)
+                except Exception as e:
+                    st.warning(f"Could not save chat: {e}")
 
-        # If deeper analysis is pending, prompts the user to select wether he would like deeper explenations.
-        # If confirmed, generates a more detailed textual interpretation using Gemini.
-        # This result is appended to the chat history and shown to the user.
-        # ── Deeper Analysis Execution ───────────────────────────────────────
-        if "deep_analysis_pending" in st.session_state:
+            # ── Create per-chat deeper-analysis prompt inline (no duplicates)
+            active_id = st.session_state.get("current_chat_id")
+            intent_raw = (structured_response.get("intent") or "").strip().lower()
+            graphs_exist = bool(structured_response.get("graphs"))
+            intent_whitelist = {
+                "graph", "graphs", "compare", "comparison",
+                "industry", "industry_values",
+                "sector", "sector_comparison",
+                "addition", "forecast", "analysis", "visualize"
+            }
+            should_offer_deep = graphs_exist or (intent_raw in intent_whitelist)
+
+            if should_offer_deep and active_id:
+                st.session_state.pending_by_chat[active_id] = {
+                    "summary": structured_response.get("text", "") or "",
+                    "context": f"{(intent_raw or 'analysis').capitalize()}",
+                }
+                just_set_pending = True
+
+                st.markdown("### 🔍 Would you like a deeper analysis?")
+                c1, c2 = st.columns([1, 1])
+                if c1.button("🎨 Yes, show me!", use_container_width=True, key=f"deep_yes_inline_{active_id}"):
+                    pending = st.session_state.pending_by_chat.pop(active_id, None)
+                    if pending:
+                        with st.spinner("🔍 Generating deeper analysis..."):
+                            deep_result = self.engine._generate_deeper_analysis(
+                                pending["summary"], context_info=pending["context"]
+                            )
+                        with st.chat_message("assistant"):
+                            st.markdown("### 🔍 Deeper Analysis")
+                            lang = st.session_state.get("language", "en")
+                            align = "right" if lang == "he" else "left"
+                            dir_attr = "rtl" if lang == "he" else "ltr"
+                            st.markdown(
+                                f'<div dir="{dir_attr}" style="text-align: {align}; font-size: 18px;">{deep_result}</div>',
+                                unsafe_allow_html=True
+                            )
+                        st.session_state.chat_history.append(
+                            {"role": "assistant", "deep_analysis": deep_result}
+                        )
+                        if cid:
+                            try:
+                                payload = _serialize_history_for_db(st.session_state.chat_history)
+                                update_chat(cid, payload)
+                            except Exception as e:
+                                st.warning(f"Could not save chat: {e}")
+                        st.rerun()
+
+                if c2.button("❌ No thanks", use_container_width=True, key=f"deep_no_inline_{active_id}"):
+                    st.session_state.pending_by_chat.pop(active_id, None)
+                    st.rerun()
+
+        # ── Safety-net: show pending prompt only if not just created this run ──
+        active_id = st.session_state.get("current_chat_id")
+        pending = st.session_state.pending_by_chat.get(active_id) if active_id else None
+        if pending and not just_set_pending:
             st.markdown("### 🔍 Would you like a deeper analysis?")
-            c1, c2 = st.columns([1,1])
-            if c1.button("🎨 Yes, show me!", use_container_width=True):
+            c1, c2 = st.columns([1, 1])
+            if c1.button("🎨 Yes, show me!", use_container_width=True, key=f"deep_yes_{active_id}"):
+                st.session_state.pending_by_chat.pop(active_id, None)
                 with st.spinner("🔍 Generating deeper analysis..."):
-                    pending = st.session_state.pop("deep_analysis_pending")
                     deep_result = self.engine._generate_deeper_analysis(
                         pending["summary"], context_info=pending["context"]
                     )
-                    with st.chat_message("assistant"):
-                        st.markdown("### 🔍 Deeper Analysis")
-                        lang = st.session_state.get("language", "en")
-                        align = "right" if lang == "he" else "left"
-                        dir_attr = "rtl" if lang == "he" else "ltr"
-                        st.markdown(
-                            f'<div dir="{dir_attr}" style="text-align: {align}; font-size: 18px;">{deep_result}</div>',
-                            unsafe_allow_html=True
-                        )
-                    st.session_state.chat_history.append({"role": "assistant", "deep_analysis": deep_result})
-            if c2.button("❌ No thanks", use_container_width=True):
-                st.session_state.pop("deep_analysis_pending", None)
+                with st.chat_message("assistant"):
+                    st.markdown("### 🔍 Deeper Analysis")
+                    lang = st.session_state.get("language", "en")
+                    align = "right" if lang == "he" else "left"
+                    dir_attr = "rtl" if lang == "he" else "ltr"
+                    st.markdown(
+                        f'<div dir="{dir_attr}" style="text-align: {align}; font-size: 18px;">{deep_result}</div>',
+                        unsafe_allow_html=True
+                    )
+                st.session_state.chat_history.append(
+                    {"role": "assistant", "deep_analysis": deep_result}
+                )
+                cid = st.session_state.get("current_chat_id")
+                if cid:
+                    try:
+                        payload = _serialize_history_for_db(st.session_state.chat_history)
+                        update_chat(cid, payload)
+                    except Exception as e:
+                        st.warning(f"Could not save chat: {e}")
                 st.rerun()
 
+            if c2.button("❌ No thanks", use_container_width=True, key=f"deep_no_{active_id}"):
+                st.session_state.pending_by_chat.pop(active_id, None)
+                st.rerun()
+
+
+# ── Entrypoint: respect fullstack.app routing if present ─────────────────────
 if __name__ == "__main__":
-    app = AppManager()
-    app.run()
+    # The fullstack.app module owns the top-level routing between
+    # login / registration / reset / main app.
+    from fullstack.app import display_main_app, display_login, display_registration, display_password_reset
+
+    if st.session_state.get("authenticated"):
+        display_main_app()
+    elif st.session_state.get("reset_password"):
+        display_password_reset()
+    elif st.session_state.get("registration"):
+        display_registration()
+    else:
+        display_login()

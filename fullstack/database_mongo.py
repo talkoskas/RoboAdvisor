@@ -1,7 +1,7 @@
 from datetime import datetime
 import time
 from bson.objectid import ObjectId
-from .db import users_col, reset_tokens_col, users_chat_col
+from fullstack.db import users_col, reset_tokens_col, users_chat_col
 
 def get_user_by_username(username):
     """Retrieves a user document from the database by username.
@@ -226,3 +226,7 @@ def get_chat_by_id(chat_id):
     
     return users_chat_col.find_one({"_id": ObjectId(chat_id)})
 
+def delete_chat(chat_id: str, username: str) -> bool:
+    """Delete exactly one chat by _id and username (safety guard)."""
+    res = users_chat_col.delete_one({"_id": ObjectId(chat_id), "username": username})
+    return res.deleted_count == 1

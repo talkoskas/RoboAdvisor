@@ -6,7 +6,7 @@ import auth_manager
 import user_management
 import utils
 # fullstack/app.py
-from database_mongo import create_chat, get_chats_by_user
+from database_mongo import create_chat, get_chats_by_user, get_chat_by_id
 import os, sys
 
 # ① Compute the absolute path to the project root (parent of this file)
@@ -173,26 +173,47 @@ def display_login():
                     else:
                         login_result = auth_manager.authenticate_user(username, password)
                         if login_result["success"]:
-                            st.session_state.authenticated = True
-                            st.session_state.username = username
+                            if login_result["success"]:
+                                st.session_state.authenticated = True
+                                st.session_state.username = username
 
-                            new_id = create_chat(username, [], None)
-                            st.session_state.current_chat_id = str(new_id)
-                            st.session_state.chat_history = []
-                            st.session_state.available_chats = sorted(
-                                get_chats_by_user(username),
-                                key=lambda m: m["last_updated"],
-                                reverse=True
-                            )
-                            st.session_state.selected_chat_idx = 0
+                                # ── Choose or create a BLANK chat (no user messages yet) ──
+                                def _user_has_blank_chat(u: str) -> str | None:
+                                    metas = sorted(get_chats_by_user(u), key=lambda m: m["last_updated"], reverse=True)
+                                    for meta in metas:
+                                        doc = get_chat_by_id(meta["_id"]) or {}
+                                        history = doc.get("chat_history", []) or []
+                                        has_user = any(
+                                            m.get("role") == "user" and (m.get("content") or "").strip() for m in
+                                            history)
+                                        if not has_user:
+                                            return str(meta["_id"])
+                                    return None
 
-                            if remember_me:
-                                expiry = datetime.now() + timedelta(minutes=3)
-                                token = auth_manager.generate_auth_token(username)
-                                cookie_manager.set("auth_token", token, expires_at=expiry)
+                                current_chat_id: str | None = _user_has_blank_chat(username)
+                                if not current_chat_id:
+                                    # no blank chat exists → create one
+                                    new_id = create_chat(username, [], None)
+                                    current_chat_id = str(new_id)
 
-                            st.success("Login successful")
-                            st.rerun()
+                                # ── Prime session & sidebar with chats ──
+                                st.session_state.current_chat_id = current_chat_id
+                                st.session_state.selected_chat_id = current_chat_id
+                                st.session_state.available_chats = sorted(
+                                    get_chats_by_user(username), key=lambda m: m["last_updated"], reverse=True
+                                )
+                                st.session_state.chat_history = []  # fresh UI state
+                                st.session_state._hydrated_chat_id = None  # force hydration on main page
+
+                                # “Remember me” cookie
+                                if remember_me:
+                                    expiry = datetime.now() + timedelta(minutes=3)
+                                    token = auth_manager.generate_auth_token(username)
+                                    cookie_manager.set("auth_token", token, expires_at=expiry)
+
+                                st.success("Login successful")
+                                st.rerun()
+
                         else:
                             st.error(login_result["message"])
 
@@ -518,36 +539,15 @@ def display_password_reset():
         st.markdown('</div>', unsafe_allow_html=True)  # Close reset-container
 
 def display_main_app():
-    """Render the main chatbot application interface after user authentication.
-
-    Initializes required session state variables, runs the Streamlit app via
-    AppManager, and provides a logout option that clears session and cookie data.
-
-    Returns:
-        None
-    """
-
-    # ── Make sure our chatbot state exists ──────────────────
+    """Minimal wrapper that runs the main chatbot UI."""
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
     if "mentioned_tickers" not in st.session_state:
         st.session_state.mentioned_tickers = set()
+
     app = AppManager()
     app.run()
-    
-    # Logout button
-    if st.button("Logout"):
-        # Clear session state
-        st.session_state.authenticated = False
-        st.session_state.username = None
-        st.session_state.cookie_checked = False
-        st.session_state.chat_history = []
-        # Clear auth cookie if it exists
-        if cookie_manager.get("auth_token"):
-            cookie_manager.delete("auth_token")
-        
-        st.rerun()
-    
+
 
 # Run the app
 if __name__ == "__main__":
