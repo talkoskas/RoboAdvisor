@@ -177,9 +177,6 @@ class AppManager:
             login_ui.display_login()
             return
 
-        # Per-run flag to avoid duplicate deep-analysis prompts
-        just_set_pending = False
-
         # Container for per-chat pending prompts
         if "pending_by_chat" not in st.session_state:
             st.session_state.pending_by_chat = {}
@@ -263,6 +260,16 @@ All outputs are based on historical data and model estimations and are provided 
         if user:
             st.markdown(f"### Hello, **{user}** 👋")
         st.title("🤖 Robo Advisor – Israeli Stock Market")
+
+        # # --- Debug: Live overlay ---
+        # st.sidebar.checkbox("🔧 Debug live overlay", key="debug_live_overlay", value=True)
+        # if st.session_state.get("debug_live_overlay"):
+        #     with st.sidebar.expander("Live overlay debug", expanded=False):
+        #         st.write("last_live_error:", st.session_state.get("last_live_error"))
+        #         st.write("live_overlay_attempts:", st.session_state.get("live_overlay_attempts"))
+        #         st.write("live_overlay_rows:", st.session_state.get("live_overlay_rows"))
+        #         st.write("last_live_ticker:", st.session_state.get("last_live_ticker"))
+        #         st.write("last_actual_date:", st.session_state.get("last_actual_date"))
 
         # ── SIDEBAR: Chats / New / Delete / Logout ────────────────────────────
         st.sidebar.title("About")
@@ -468,7 +475,7 @@ All outputs are based on historical data and model estimations and are provided 
                 except Exception as e:
                     st.warning(f"Could not save chat: {e}")
 
-            # ── Create per-chat deeper-analysis prompt inline (no duplicates)
+            # ── Set (only) the pending deeper-analysis prompt for this active chat
             active_id = st.session_state.get("current_chat_id")
             intent_raw = (structured_response.get("intent") or "").strip().lower()
             graphs_exist = bool(structured_response.get("graphs"))
@@ -485,48 +492,20 @@ All outputs are based on historical data and model estimations and are provided 
                     "summary": structured_response.get("text", "") or "",
                     "context": f"{(intent_raw or 'analysis').capitalize()}",
                 }
-                just_set_pending = True
 
-                st.markdown("### 🔍 Would you like a deeper analysis?")
-                c1, c2 = st.columns([1, 1])
-                if c1.button("🎨 Yes, show me!", use_container_width=True, key=f"deep_yes_inline_{active_id}"):
-                    pending = st.session_state.pending_by_chat.pop(active_id, None)
-                    if pending:
-                        with st.spinner("🔍 Generating deeper analysis..."):
-                            deep_result = self.engine._generate_deeper_analysis(
-                                pending["summary"], context_info=pending["context"]
-                            )
-                        with st.chat_message("assistant"):
-                            st.markdown("### 🔍 Deeper Analysis")
-                            lang = st.session_state.get("language", "en")
-                            align = "right" if lang == "he" else "left"
-                            dir_attr = "rtl" if lang == "he" else "ltr"
-                            st.markdown(
-                                f'<div dir="{dir_attr}" style="text-align: {align}; font-size: 18px;">{deep_result}</div>',
-                                unsafe_allow_html=True
-                            )
-                        st.session_state.chat_history.append(
-                            {"role": "assistant", "deep_analysis": deep_result}
-                        )
-                        if cid:
-                            try:
-                                payload = _serialize_history_for_db(st.session_state.chat_history)
-                                update_chat(cid, payload)
-                            except Exception as e:
-                                st.warning(f"Could not save chat: {e}")
-                        st.rerun()
-
-                if c2.button("❌ No thanks", use_container_width=True, key=f"deep_no_inline_{active_id}"):
-                    st.session_state.pending_by_chat.pop(active_id, None)
-                    st.rerun()
-
-        # ── Safety-net: show pending prompt only if not just created this run ──
+        # ── Single global renderer for deeper-analysis prompt (no duplicates) ──
         active_id = st.session_state.get("current_chat_id")
         pending = st.session_state.pending_by_chat.get(active_id) if active_id else None
-        if pending and not just_set_pending:
+
+        if pending:
             st.markdown("### 🔍 Would you like a deeper analysis?")
             c1, c2 = st.columns([1, 1])
-            if c1.button("🎨 Yes, show me!", use_container_width=True, key=f"deep_yes_{active_id}"):
+
+            yes_clicked = c1.button("🎨 Yes, show me!", use_container_width=True, key=f"deep_yes_{active_id}")
+            no_clicked = c2.button("❌ No thanks", use_container_width=True, key=f"deep_no_{active_id}")
+
+            if yes_clicked:
+                # Consume pending BEFORE generating, so we don't re-render the prompt this run.
                 st.session_state.pending_by_chat.pop(active_id, None)
                 with st.spinner("🔍 Generating deeper analysis..."):
                     deep_result = self.engine._generate_deeper_analysis(
@@ -541,9 +520,7 @@ All outputs are based on historical data and model estimations and are provided 
                         f'<div dir="{dir_attr}" style="text-align: {align}; font-size: 18px;">{deep_result}</div>',
                         unsafe_allow_html=True
                     )
-                st.session_state.chat_history.append(
-                    {"role": "assistant", "deep_analysis": deep_result}
-                )
+                st.session_state.chat_history.append({"role": "assistant", "deep_analysis": deep_result})
                 cid = st.session_state.get("current_chat_id")
                 if cid:
                     try:
@@ -551,9 +528,9 @@ All outputs are based on historical data and model estimations and are provided 
                         update_chat(cid, payload)
                     except Exception as e:
                         st.warning(f"Could not save chat: {e}")
-                st.rerun()
 
-            if c2.button("❌ No thanks", use_container_width=True, key=f"deep_no_{active_id}"):
+            elif no_clicked:
+                # Clear and *immediately* rerun so the prompt disappears on the first click.
                 st.session_state.pending_by_chat.pop(active_id, None)
                 st.rerun()
 

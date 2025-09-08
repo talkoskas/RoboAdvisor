@@ -1,8 +1,77 @@
 import pandas as pd
 import numpy as np
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta
 import ast
+import yfinance as yf
+
+
+# def get_latest_actuals_for_ticker(ticker: str, last_base_date: pd.Timestamp | None):
+#     """
+#     Return a DataFrame with columns ['Date','Close'] containing prices strictly AFTER last_base_date.
+#     If last_base_date is None, return recent closes for the last ~90 days.
+#     Replace the body with your existing market data fetcher if not using yfinance.
+#     """
+#     import yfinance as yf  # or your MarketDataFetcher
+#
+#     if last_base_date is None:
+#         start = datetime.utcnow() - timedelta(days=120)
+#     else:
+#         start = (pd.to_datetime(last_base_date) + pd.Timedelta(days=1)).to_pydatetime()
+#
+#     end = datetime.utcnow()  # today (UTC)
+#     if start >= end:
+#         return pd.DataFrame(columns=["Date", "Close"])
+#
+#     # Fetch daily data
+#     df = yf.download(ticker, start=start, end=end, interval="1d", progress=False)
+#     if df is None or df.empty:
+#         return pd.DataFrame(columns=["Date", "Close"])
+#
+#     out = df.reset_index()[["Date", "Close"]]  # yfinance returns DatetimeIndex
+#     # Coerce timezone-naive
+#     out["Date"] = pd.to_datetime(out["Date"]).dt.tz_localize(None)
+#     return out
+
+def _coerce_ta_ticker(ticker: str) -> str:
+    # Your app often uses ".TA". If your mapping already includes suffixes, keep as-is.
+    # If not, add ".TA" when the ticker looks like a TA symbol (heuristic).
+    if ticker and not ticker.upper().endswith(".TA"):
+        return f"{ticker.upper()}.TA"
+    return ticker.upper()
+
+def _floor_date(x):
+    # your CSV usually has date-only; normalize intraday series
+    return pd.to_datetime(x).normalize()
+
+def _safe_latest_date(df, col="Date"):
+    if df is None or df.empty:
+        return None
+    try:
+        return pd.to_datetime(df[col]).max()
+    except Exception:
+        return None
+
+def _dedupe_concat(base_df: pd.DataFrame, live_df: pd.DataFrame) -> pd.DataFrame:
+    """Append live rows where Date > last base date; keep only needed columns."""
+    if base_df is None or base_df.empty:
+        return base_df
+    last_date = _safe_latest_date(base_df, "Date")
+    if live_df is None or live_df.empty or last_date is None:
+        return base_df
+
+    # Only append rows strictly after base max Date
+    live_cut = live_df[live_df["Date"] > last_date].copy()
+    if live_cut.empty:
+        return base_df
+
+    # Build a frame with "Actual" values (closing price)
+    live_cut = live_cut[["Date", "Close"]].rename(columns={"Close": "Actual"})
+    out = pd.concat([base_df, live_cut], ignore_index=True)
+    # ensure no duplicates
+    out = out.drop_duplicates(subset=["Date"]).sort_values("Date")
+    return out
+
 
 class StockDataHandler:
     """Handles loading, merging, and accessing stock data and mappings for analysis.
@@ -51,6 +120,104 @@ class StockDataHandler:
 
         sector_df = pd.read_csv("sectors_df.csv")
         self.hebrew_industry_mapping = dict(zip(sector_df["Industry"], sector_df["HebrewIndustryName"]))
+
+    def get_latest_actuals_for_ticker(self, ticker_with_suffix: str, after_date) -> pd.DataFrame:
+        """
+        Return daily closes strictly AFTER `after_date` for `ticker_with_suffix` using yfinance,
+        with several fallbacks. Output columns: Date (naive), Close (float).
+        Also records debug info in st.session_state for visibility.
+        """
+        try:
+            import yfinance as yf
+        except Exception as e:
+            try:
+                import streamlit as st
+                st.session_state["last_live_error"] = f"yfinance import failed: {e}"
+            except Exception:
+                pass
+            return pd.DataFrame(columns=["Date", "Close"])
+
+        try:
+            import streamlit as st
+        except Exception:
+            # not in a Streamlit context
+            class _Dummy:
+                def __setitem__(self, k, v): pass
+
+                def get(self, k, d=None): return d
+
+            st = type("S", (), {"session_state": _Dummy()})()
+
+        st.session_state["live_overlay_attempts"] = []
+        st.session_state["last_live_ticker"] = ticker_with_suffix
+
+        if pd.isna(after_date):
+            st.session_state["last_live_error"] = "after_date is NaT"
+            return pd.DataFrame(columns=["Date", "Close"])
+
+        cutoff = pd.to_datetime(after_date, errors="coerce")
+        if pd.isna(cutoff):
+            st.session_state["last_live_error"] = "after_date could not be parsed"
+            return pd.DataFrame(columns=["Date", "Close"])
+        cutoff = cutoff.tz_localize(None)
+
+        # candidates & helpers
+        candidates = [ticker_with_suffix]
+        if ticker_with_suffix.endswith(".TA"):
+            core = ticker_with_suffix[:-3]
+            candidates += [core + ".TA", core]
+
+        def _as_output(df_raw: pd.DataFrame) -> pd.DataFrame:
+            if df_raw is None or df_raw.empty:
+                return pd.DataFrame(columns=["Date", "Close"])
+            out = df_raw.reset_index()
+            # yfinance sometimes returns 'Date' as index or 'Datetime' column
+            if "Date" not in out.columns and "Datetime" in out.columns:
+                out = out.rename(columns={"Datetime": "Date"})
+            if "Adj Close" in out.columns and "Close" not in out.columns:
+                out["Close"] = out["Adj Close"]
+            out["Date"] = pd.to_datetime(out["Date"], errors="coerce").dt.tz_localize(None)
+            out = out[out["Date"] > cutoff]
+            return out[["Date", "Close"]]
+
+        for sym in candidates:
+            # Strategy A: bounded start/end
+            try:
+                start = (cutoff + pd.Timedelta(days=1)).date()
+                end = dt.date.today()
+                st.session_state["live_overlay_attempts"].append(
+                    {"sym": sym, "mode": "bounded", "start": str(start), "end": str(end)})
+
+                if start <= end:
+                    df = yf.download(
+                        tickers=sym,
+                        start=start.isoformat(),
+                        end=(end + dt.timedelta(days=1)).isoformat(),
+                        interval="1d",
+                        auto_adjust=True,
+                        progress=False,
+                        threads=False,
+                    )
+                    out = _as_output(df)
+                    if not out.empty:
+                        st.session_state["live_overlay_rows"] = len(out)
+                        return out
+            except Exception as e:
+                st.session_state["last_live_error"] = f"bounded fetch failed ({sym}): {e}"
+
+            # Strategy B: history period
+            try:
+                st.session_state["live_overlay_attempts"].append({"sym": sym, "mode": "period=2y"})
+                hist = yf.Ticker(sym).history(period="2y", interval="1d", auto_adjust=True)
+                out = _as_output(hist)
+                if not out.empty:
+                    st.session_state["live_overlay_rows"] = len(out)
+                    return out
+            except Exception as e:
+                st.session_state["last_live_error"] = f"history fetch failed ({sym}): {e}"
+
+        st.session_state["live_overlay_rows"] = 0
+        return pd.DataFrame(columns=["Date", "Close"])
 
     def extract_by_model(self, ticker: str, model: str, start_date, end_date):
         """Extracts actual and predicted stock data for a given ticker and model within a date range.

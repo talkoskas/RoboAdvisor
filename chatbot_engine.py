@@ -1,6 +1,7 @@
 from pathlib import Path
 import sys
 
+
 BASE_DIR = Path(__file__).resolve().parent
 FULLSTACK_DIR = (BASE_DIR / "fullstack")
 if not FULLSTACK_DIR.exists():
@@ -500,25 +501,20 @@ class ChatbotEngine:
 
         return {"text": summary, "graphs": [fig_actual, fig_pred, fig_forecast]}
 
+    # chatbot_engine.py (inside ChatbotEngine)
+    def _looks_like_tase_symbol(s: str) -> bool:
+        s = (s or "").upper().replace(".TA", "").strip()
+        return s.isalnum() and 1 <= len(s) <= 6 and " " not in s
 
     def _handle_graph_intent(self, intent_data):
-        """Handles the 'graph' intent for a single company by generating a unified forecast graph.
-    
-        This method retrieves actual, predicted, and forecasted stock data for the specified company,
-        using its best-performing model over the year 2024. It then generates a combined Plotly graph
-        and a textual summary of the trends.
-    
-        Args:
-            intent_data (dict): A dictionary containing the key "company" with the name or ticker of the company.
-    
-        Returns:
-            dict: A dictionary with:
-                - "text" (str): A summary of the company's stock performance and forecast.
-                - "graphs" (list): A single Plotly figure showing actual, predicted, and forecasted values.
-        """
+        """Handles the 'graph' intent for a single company by generating a unified forecast graph."""
         company = intent_data["company"].upper()
         language = st.session_state.get("language", "en")
         ticker = self.intent_detector.resolve_ticker(company) + ".TA"
+
+        from datetime import datetime, timedelta
+        import pandas as pd
+
         start_date = datetime(2024, 1, 1)
         end_date = datetime(2024, 12, 31)
 
@@ -535,10 +531,11 @@ class ChatbotEngine:
             forecast[["Date", "Forecasted"]]
         ], ignore_index=True).sort_values("Date")
 
-        fig = self.graph_generator.generate_actual_predicted_forecast_graph(combined_df, company, model, language=language)
+        fig = self.graph_generator.generate_actual_predicted_forecast_graph(
+            combined_df, company, model, language=language
+        )
         text = self._generate_single_stock_summary(company, data, forecast, model, language=language)
         return {"text": text, "graphs": [fig]}
-
 
     def _handle_compare_intent(self, intent_data):
         """Handles the 'compare' intent by comparing multiple companies' stock performance.

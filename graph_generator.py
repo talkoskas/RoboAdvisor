@@ -2,6 +2,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import timedelta
 import plotly.express as px
+import yfinance as yf
 
 class GraphGenerator:
     """Generates stock-related graphs with bilingual support for Israeli market companies.
@@ -33,6 +34,48 @@ class GraphGenerator:
             if pd.notna(row["CompanyName"]) and pd.notna(row["HebrewCompanyName"])
         }
 
+    def _overlay_recent_actuals(self, fig: go.Figure, ticker_symbol: str, last_df_date):
+        """
+        Fetch recent daily closes and overlay as 'Recent Actuals' if available.
+        Supports TASE tickers when given e.g. 'LEUMI.TA'.
+        """
+        if yf is None or not ticker_symbol:
+            return fig
+
+        # Normalize to .TA if this is an Israeli ticker and the suffix is missing
+        symbol = ticker_symbol.strip().upper()
+        if ".TA" not in symbol and len(symbol) <= 6:  # heuristic: short codes are likely TA
+            symbol = f"{symbol}.TA"
+
+        # Start a few days after the last point in your CSV to avoid overlap
+        try:
+            last_dt = pd.to_datetime(last_df_date).to_pydatetime()
+        except Exception:
+            last_dt = dt.datetime.utcnow() - dt.timedelta(days=365)
+
+        start = (last_dt + dt.timedelta(days=1)).date().isoformat()
+        end   = (dt.datetime.utcnow() + dt.timedelta(days=1)).date().isoformat()
+
+        try:
+            df_live = yf.download(symbol, start=start, end=end, interval="1d", auto_adjust=True, progress=False)
+            if isinstance(df_live, pd.DataFrame) and not df_live.empty and "Close" in df_live.columns:
+                df_live = df_live.reset_index().rename(columns={"Date": "DateIndex"})
+                fig.add_trace(
+                    go.Scatter(
+                        x=df_live["DateIndex"],
+                        y=df_live["Close"],
+                        mode="lines+markers",
+                        name="Recent Actuals",
+                        line=dict(width=2, dash="solid"),
+                        marker=dict(size=5),
+                    )
+                )
+        except Exception:
+            # Silent fail: if Yahoo is blocked or symbol unknown, keep the base chart
+            pass
+
+        return fig
+
     def _translate_company_name(self, company_name: str) -> str:
         """Translates an English company name to its Hebrew equivalent if available.
     
@@ -45,37 +88,45 @@ class GraphGenerator:
         key = company_name.strip().upper()
         return self.company_name_to_hebrew.get(key, company_name)
 
-    def generate_actual_predicted_forecast_graph(self, df: pd.DataFrame, stock: str, model: str, language: str = "en"):
-        """Generates a line graph of actual, predicted, and forecasted stock values for a single company.
-    
-        This method uses Plotly to create a time-series chart displaying three trend lines:
-        actual values (solid), predicted values (dashed), and forecasted values (dotted). 
-        Graph labels are automatically rendered in Hebrew or English.
-    
-        Args:
-            df (pd.DataFrame): DataFrame containing columns "Date" and one or more of "Actual", "Predicted", "Forecasted".
-            stock (str): The name of the stock or company to display in the title.
-            model (str): The name of the model used for prediction/forecasting.
-            language (str, optional): Language for graph labels ("en" or "he"). Defaults to "en".
-    
-        Returns:
-            go.Figure: A Plotly figure visualizing the stock's actual, predicted, and forecasted values.
-        """
+    def generate_actual_predicted_forecast_graph(
+            self,
+            df: pd.DataFrame,
+            stock: str,
+            model: str,
+            language: str = "en",
+    ):
+        """Generates a line graph of actual, predicted, and forecasted stock values for a single company."""
+
         labels = {
-            "en": {"title": f"Actual, Predicted, and Forecasted Values for {stock} ({model})", "x": "Date", "y": "Value"},
-            "he": {"title": f"תחזית מניה עבור {self._translate_company_name(stock)} ({model})", "x": "תאריך", "y": "ערך"}
+            "en": {"title": f"Actual, Predicted, and Forecasted Values for {stock} ({model})", "x": "Date",
+                   "y": "Value"},
+            "he": {"title": f"תחזית מניה עבור {self._translate_company_name(stock)} ({model})", "x": "תאריך",
+                   "y": "ערך"}
         }
 
         fig = go.Figure()
 
+        df = df.copy()
+        if "Date" in df.columns:
+            try:
+                df["Date"] = pd.to_datetime(df["Date"])
+            except Exception:
+                pass
+
         if "Actual" in df.columns:
-            fig.add_trace(go.Scatter(x=df["Date"], y=df["Actual"], mode='lines', name='Actual' if language == "en" else "ערך אמיתי", line=dict(color='blue', width=2)))
+            fig.add_trace(go.Scatter(x=df["Date"], y=df["Actual"], mode='lines',
+                                     name='Actual' if language == "en" else "ערך אמיתי",
+                                     line=dict(color='blue', width=2)))
 
         if "Predicted" in df.columns:
-            fig.add_trace(go.Scatter(x=df["Date"], y=df["Predicted"], mode='lines', name='Predicted' if language == "en" else "חזוי", line=dict(color='orange', width=2, dash='dash')))
+            fig.add_trace(go.Scatter(x=df["Date"], y=df["Predicted"], mode='lines',
+                                     name='Predicted' if language == "en" else "חזוי",
+                                     line=dict(color='orange', width=2, dash='dash')))
 
         if "Forecasted" in df.columns:
-            fig.add_trace(go.Scatter(x=df["Date"], y=df["Forecasted"], mode='lines', name='Forecasted' if language == "en" else "תחזית", line=dict(color='green', width=2, dash='dot')))
+            fig.add_trace(go.Scatter(x=df["Date"], y=df["Forecasted"], mode='lines',
+                                     name='Forecasted' if language == "en" else "תחזית",
+                                     line=dict(color='green', width=2, dash='dot')))
 
         fig.update_layout(
             title=labels[language]["title"],
@@ -85,7 +136,6 @@ class GraphGenerator:
             width=1000,
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         )
-
         fig.update_xaxes(tickformat='%Y-%m', tickangle=45, showgrid=True)
         fig.update_yaxes(showgrid=True)
         return self.customize(fig)
