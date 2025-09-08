@@ -6,7 +6,7 @@ import auth_manager
 import user_management
 import utils
 # fullstack/app.py
-from database_mongo import create_chat, get_chats_by_user, get_chat_by_id
+from database_mongo import create_chat, get_chats_by_user, get_chat_by_id, get_user_flags
 import os, sys
 
 # ① Compute the absolute path to the project root (parent of this file)
@@ -176,6 +176,8 @@ def display_login():
                             if login_result["success"]:
                                 st.session_state.authenticated = True
                                 st.session_state.username = username
+                                flags = get_user_flags(username)
+                                st.session_state["accepted_disclaimer"] = bool(flags.get("accepted_disclaimer", False))
 
                                 # ── Choose or create a BLANK chat (no user messages yet) ──
                                 def _user_has_blank_chat(u: str) -> str | None:

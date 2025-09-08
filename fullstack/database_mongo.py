@@ -58,7 +58,9 @@ def create_user(username, email, password_hash, provider="local"):
         "email": email,
         "password": password_hash,
         "provider": provider,
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.utcnow().isoformat(),
+        "accepted_disclaimer": False,  # ← NEW
+        "accepted_disclaimer_at": None,  # ← NEW
     }
 
     print("Attempting to insert user into database...")
@@ -230,3 +232,19 @@ def delete_chat(chat_id: str, username: str) -> bool:
     """Delete exactly one chat by _id and username (safety guard)."""
     res = users_chat_col.delete_one({"_id": ObjectId(chat_id), "username": username})
     return res.deleted_count == 1
+
+def get_user_flags(username: str):
+    """Return only lightweight flags for the user."""
+    return users_col.find_one(
+        {"username": username},
+        {"accepted_disclaimer": 1, "accepted_disclaimer_at": 1, "_id": 0}
+    ) or {}
+
+def set_user_disclaimer(username: str, accepted: bool = True):
+    users_col.update_one(
+        {"username": username},
+        {"$set": {
+            "accepted_disclaimer": bool(accepted),
+            "accepted_disclaimer_at": datetime.utcnow().isoformat() if accepted else None
+        }}
+    )
