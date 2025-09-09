@@ -241,6 +241,10 @@ All outputs are based on historical data and model estimations and are provided 
         if "pending_by_chat" not in st.session_state:
             st.session_state.pending_by_chat = {}
 
+        # Busy-state per chat: prevents double-click / duplicate generation
+        if "deep_busy_by_chat" not in st.session_state:
+            st.session_state.deep_busy_by_chat = {}
+
         # Nonce used to force re-instantiation of chat selectbox after create/delete
         if "chat_widget_nonce" not in st.session_state:
             st.session_state.chat_widget_nonce = 0
@@ -496,13 +500,72 @@ All outputs are based on historical data and model estimations and are provided 
 
                 st.markdown("### 🔍 Would you like a deeper analysis?")
                 c1, c2 = st.columns([1, 1])
-                if c1.button("🎨 Yes, show me!", use_container_width=True, key=f"deep_yes_inline_{active_id}"):
-                    pending = st.session_state.pending_by_chat.pop(active_id, None)
-                    if pending:
+
+                is_busy = st.session_state.deep_busy_by_chat.get(active_id, False)
+
+                if c1.button("🎨 Yes, show me!", use_container_width=True,
+                             key=f"deep_yes_inline_{active_id}", disabled=is_busy):
+                    pending = st.session_state.pending_by_chat.get(active_id)
+                    if pending and not is_busy:
+                        st.session_state.deep_busy_by_chat[active_id] = True
+                        try:
+                            with st.spinner("🔍 Generating deeper analysis..."):
+                                deep_result = self.engine._generate_deeper_analysis(
+                                    pending["summary"], context_info=pending["context"]
+                                )
+                            # consume pending before writing output
+                            st.session_state.pending_by_chat.pop(active_id, None)
+
+                            with st.chat_message("assistant"):
+                                st.markdown("### 🔍 Deeper Analysis")
+                                lang = st.session_state.get("language", "en")
+                                align = "right" if lang == "he" else "left"
+                                dir_attr = "rtl" if lang == "he" else "ltr"
+                                st.markdown(
+                                    f'<div dir="{dir_attr}" style="text-align: {align}; font-size: 18px;">{deep_result}</div>',
+                                    unsafe_allow_html=True
+                                )
+
+                            st.session_state.chat_history.append(
+                                {"role": "assistant", "deep_analysis": deep_result}
+                            )
+                            if cid:
+                                try:
+                                    payload = _serialize_history_for_db(st.session_state.chat_history)
+                                    update_chat(cid, payload)
+                                except Exception as e:
+                                    st.warning(f"Could not save chat: {e}")
+                        finally:
+                            st.session_state.deep_busy_by_chat[active_id] = False
+                        st.rerun()
+
+                if c2.button("❌ No thanks", use_container_width=True,
+                             key=f"deep_no_inline_{active_id}", disabled=is_busy):
+                    st.session_state.pending_by_chat.pop(active_id, None)
+                    st.rerun()
+
+        # ── Safety-net: show pending prompt (single, stable) for ACTIVE chat ──
+        active_id = st.session_state.get("current_chat_id")
+        pending = st.session_state.pending_by_chat.get(active_id) if active_id else None
+
+        if pending and not just_set_pending:
+            st.markdown("### 🔍 Would you like a deeper analysis?")
+            c1, c2 = st.columns([1, 1])
+
+            is_busy = st.session_state.deep_busy_by_chat.get(active_id, False)
+
+            if c1.button("🎨 Yes, show me!", use_container_width=True,
+                         key=f"deep_yes_{active_id}", disabled=is_busy):
+                if not is_busy:
+                    st.session_state.deep_busy_by_chat[active_id] = True
+                    try:
+                        # consume pending first to avoid duplicate gen on rerun
+                        st.session_state.pending_by_chat.pop(active_id, None)
                         with st.spinner("🔍 Generating deeper analysis..."):
                             deep_result = self.engine._generate_deeper_analysis(
                                 pending["summary"], context_info=pending["context"]
                             )
+
                         with st.chat_message("assistant"):
                             st.markdown("### 🔍 Deeper Analysis")
                             lang = st.session_state.get("language", "en")
@@ -512,58 +575,27 @@ All outputs are based on historical data and model estimations and are provided 
                                 f'<div dir="{dir_attr}" style="text-align: {align}; font-size: 18px;">{deep_result}</div>',
                                 unsafe_allow_html=True
                             )
+
                         st.session_state.chat_history.append(
                             {"role": "assistant", "deep_analysis": deep_result}
                         )
+                        cid = st.session_state.get("current_chat_id")
                         if cid:
                             try:
                                 payload = _serialize_history_for_db(st.session_state.chat_history)
                                 update_chat(cid, payload)
                             except Exception as e:
                                 st.warning(f"Could not save chat: {e}")
-                        st.rerun()
-
-                if c2.button("❌ No thanks", use_container_width=True, key=f"deep_no_inline_{active_id}"):
-                    st.session_state.pending_by_chat.pop(active_id, None)
+                    finally:
+                        st.session_state.deep_busy_by_chat[active_id] = False
+                    # immediate UI refresh so the prompt disappears
                     st.rerun()
 
-        # ── Safety-net: show pending prompt (single, stable) for ACTIVE chat ──
-        active_id = st.session_state.get("current_chat_id")
-        pending = st.session_state.pending_by_chat.get(active_id) if active_id else None
-
-        # ⬇️ Add this guard:
-        if pending and not just_set_pending:
-            st.markdown("### 🔍 Would you like a deeper analysis?")
-            c1, c2 = st.columns([1, 1])
-
-            if c1.button("🎨 Yes, show me!", use_container_width=True, key=f"deep_yes_{active_id}"):
+            if c2.button("❌ No thanks", use_container_width=True,
+                         key=f"deep_no_{active_id}", disabled=is_busy):
                 st.session_state.pending_by_chat.pop(active_id, None)
-                with st.spinner("🔍 Generating deeper analysis..."):
-                    deep_result = self.engine._generate_deeper_analysis(
-                        pending["summary"], context_info=pending["context"]
-                    )
+                st.rerun()
 
-                with st.chat_message("assistant"):
-                    st.markdown("### 🔍 Deeper Analysis")
-                    lang = st.session_state.get("language", "en")
-                    align = "right" if lang == "he" else "left"
-                    dir_attr = "rtl" if lang == "he" else "ltr"
-                    st.markdown(
-                        f'<div dir="{dir_attr}" style="text-align: {align}; font-size: 18px;">{deep_result}</div>',
-                        unsafe_allow_html=True
-                    )
-
-                st.session_state.chat_history.append({"role": "assistant", "deep_analysis": deep_result})
-                cid = st.session_state.get("current_chat_id")
-                if cid:
-                    try:
-                        payload = _serialize_history_for_db(st.session_state.chat_history)
-                        update_chat(cid, payload)
-                    except Exception as e:
-                        st.warning(f"Could not save chat: {e}")
-
-            if c2.button("❌ No thanks", use_container_width=True, key=f"deep_no_{active_id}"):
-                st.session_state.pending_by_chat.pop(active_id, None)
 
 # ── Entrypoint: respect fullstack.app routing if present ─────────────────────
 if __name__ == "__main__":
