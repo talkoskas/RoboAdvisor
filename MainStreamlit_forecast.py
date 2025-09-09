@@ -531,7 +531,8 @@ All outputs are based on historical data and model estimations and are provided 
         active_id = st.session_state.get("current_chat_id")
         pending = st.session_state.pending_by_chat.get(active_id) if active_id else None
 
-        if pending:
+        # ⬇️ Add this guard:
+        if pending and not just_set_pending:
             st.markdown("### 🔍 Would you like a deeper analysis?")
             c1, c2 = st.columns([1, 1])
 
@@ -552,9 +553,7 @@ All outputs are based on historical data and model estimations and are provided 
                         unsafe_allow_html=True
                     )
 
-                st.session_state.chat_history.append(
-                    {"role": "assistant", "deep_analysis": deep_result}
-                )
+                st.session_state.chat_history.append({"role": "assistant", "deep_analysis": deep_result})
                 cid = st.session_state.get("current_chat_id")
                 if cid:
                     try:
@@ -565,7 +564,6 @@ All outputs are based on historical data and model estimations and are provided 
 
             if c2.button("❌ No thanks", use_container_width=True, key=f"deep_no_{active_id}"):
                 st.session_state.pending_by_chat.pop(active_id, None)
-
 
 # ── Entrypoint: respect fullstack.app routing if present ─────────────────────
 if __name__ == "__main__":
